@@ -1,18 +1,23 @@
 import { Command } from "../types";
 import { unmuteUser } from "../database";
-import { parseTarget } from "../utils/target";
+import { displayId, resolveTarget } from "../utils/target";
 
 const unmute: Command = {
   name: "unmute",
   description: "Unmute a member",
-  usage: "!unmute <number>",
+  usage: "!unmute @user",
   adminOnly: true,
+  category: "admin",
   cooldown: 3,
   async execute(ctx, reply) {
-    const target = parseTarget(ctx.args);
-    if (!target) { await reply("Usage: !unmute <number>"); return; }
+    const target = resolveTarget(ctx);
+    if (!target) {
+      await reply("Usage: !unmute @user");
+      return;
+    }
     unmuteUser(target);
-    await reply(`🔊 Unmuted ${target.split("@")[0]}`);
+    await reply(`Unmuted ${displayId(target)}.`);
   },
 };
+
 export default unmute;

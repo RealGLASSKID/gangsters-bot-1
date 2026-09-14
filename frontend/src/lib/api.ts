@@ -1,8 +1,21 @@
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
-async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${API}${path}`, { cache: "no-store" });
-  if (!res.ok) throw new Error(`API ${path} failed`);
+async function request<T>(path: string, token: string | null, init?: RequestInit): Promise<T> {
+  const headers = new Headers(init?.headers);
+  headers.set("Content-Type", "application/json");
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const res = await fetch(`${API}${path}`, { ...init, headers, cache: "no-store" });
+  if (!res.ok) {
+    let detail = `API ${path} failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body?.error) detail = body.error;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(detail);
+  }
   return res.json();
 }
 
@@ -10,7 +23,9 @@ export type Health = {
   ok: boolean;
   bot: string;
   connected: boolean;
+  status?: string;
   groupJid: string;
+  firebase?: boolean;
 };
 
 export type Stats = {
@@ -36,14 +51,31 @@ export type Cmd = {
   usage: string | null;
   adminOnly: boolean;
   ownerOnly: boolean;
+  category?: string;
+};
+
+export type Session = {
+  status: string;
+  connected: boolean;
+  qrDataUrl: string | null;
+  user: string | null;
+  lastError: string | null;
+  updatedAt: number;
+  bot: string;
+  groupJid: string;
+  adminEmail: string | null;
+  firebaseReady: boolean;
 };
 
 export const api = {
-  health: () => get<Health>("/api/health"),
-  stats: () => get<Stats>("/api/stats"),
-  xp: () => get<XpRow[]>("/api/leaderboard/xp"),
-  coins: () => get<CoinRow[]>("/api/leaderboard/coins"),
-  rep: () => get<RepRow[]>("/api/leaderboard/rep"),
-  giveaway: () => get<Giveaway>("/api/giveaway"),
-  commands: () => get<Cmd[]>("/api/commands"),
+  health: () => request<Health>("/api/health", null),
+  stats: (token: string) => request<Stats>("/api/stats", token),
+  xp: (token: string) => request<XpRow[]>("/api/leaderboard/xp", token),
+  coins: (token: string) => request<CoinRow[]>("/api/leaderboard/coins", token),
+  rep: (token: string) => request<RepRow[]>("/api/leaderboard/rep", token),
+  giveaway: (token: string) => request<Giveaway>("/api/giveaway", token),
+  commands: (token: string) => request<Cmd[]>("/api/commands", token),
+  session: (token: string) => request<Session>("/api/session", token),
+  relink: (token: string) =>
+    request<{ ok: boolean; session: Session }>("/api/session/relink", token, { method: "POST" }),
 };

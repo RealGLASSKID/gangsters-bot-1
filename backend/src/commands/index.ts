@@ -24,6 +24,16 @@ import unwarn from "./unwarn";
 import mute from "./mute";
 import unmute from "./unmute";
 import kick from "./kick";
+import del from "./delete";
+import promote from "./promote";
+import demote from "./demote";
+import close from "./close";
+import open from "./open";
+import lock from "./lock";
+import unlock from "./unlock";
+import setname from "./setname";
+import setdesc from "./setdesc";
+import admins from "./admins";
 import tagall from "./tagall";
 import resetuser from "./resetuser";
 import rps from "./rps";
@@ -52,11 +62,13 @@ function register(cmd: Command) {
 }
 
 [
-  ping, help, me, group,
+  ping, help, me, group, admins,
   rank, level, profile, leaderboard, top,
   balance, daily, work, bank, deposit, withdraw, give,
   shop, inventory, coinflip, dice, richest,
-  warn, warnings, unwarn, mute, unmute, kick, tagall, resetuser,
+  warn, warnings, unwarn, mute, unmute, kick, del,
+  promote, demote, close, open, lock, unlock, setname, setdesc,
+  tagall, resetuser,
   rps, guess, trivia, eightball, joke, fact,
   afk, birthday, mybirthday, rep, reptop, confess,
   giveaway,

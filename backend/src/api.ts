@@ -1,4 +1,4 @@
-import express from "express";
+import express, { NextFunction, Request, Response } from "express";
 import {
   db,
   getLeaderboard,
@@ -7,31 +7,65 @@ import {
   getActiveGiveaway,
   getGiveawayEntries,
 } from "./database";
-import { getSocket } from "./bot";
-import { config } from "./config";
+import { getSession, relinkWhatsApp } from "./bot";
+import { config, dashboardConfig } from "./config";
 import { getAllCommands } from "./commands";
+import { firebaseReady, verifyIdToken } from "./auth/firebase";
+
+type AuthedRequest = Request & { adminEmail?: string | null };
+
+async function requireDashboardAuth(req: AuthedRequest, res: Response, next: NextFunction) {
+  if (dashboardConfig.devBypass) {
+    req.adminEmail = "dev@localhost";
+    next();
+    return;
+  }
+
+  const header = req.headers.authorization || "";
+  const token = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
+  if (!token) {
+    res.status(401).json({ error: "Sign in required" });
+    return;
+  }
+
+  try {
+    const user = await verifyIdToken(token);
+    req.adminEmail = user.email;
+    next();
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unauthorized";
+    res.status(401).json({ error: message });
+  }
+}
 
 export function startApi(port = Number(process.env.PORT) || 3001) {
   const app = express();
   app.use(express.json());
 
-  app.use((_req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Headers", "Content-Type");
+  app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", dashboardConfig.origin);
+    res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    if (req.method === "OPTIONS") {
+      res.sendStatus(204);
+      return;
+    }
     next();
   });
 
   app.get("/api/health", (_req, res) => {
-    const sock = getSocket();
+    const session = getSession();
     res.json({
       ok: true,
       bot: config.botName,
-      connected: !!(sock && sock.user),
+      connected: session.connected,
+      status: session.status,
       groupJid: config.groupJid,
+      firebase: firebaseReady() || dashboardConfig.devBypass,
     });
   });
 
-  app.get("/api/stats", (_req, res) => {
+  app.get("/api/stats", requireDashboardAuth, (_req, res) => {
     const users = db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number };
     const messages = db.prepare("SELECT SUM(message_count) AS c FROM users").get() as {
       c: number | null;
@@ -46,7 +80,7 @@ export function startApi(port = Number(process.env.PORT) || 3001) {
     });
   });
 
-  app.get("/api/leaderboard/xp", (_req, res) => {
+  app.get("/api/leaderboard/xp", requireDashboardAuth, (_req, res) => {
     const rows = getLeaderboard(15).map((u) => ({
       name: u.name || u.jid.split("@")[0],
       level: u.level,
@@ -56,7 +90,7 @@ export function startApi(port = Number(process.env.PORT) || 3001) {
     res.json(rows);
   });
 
-  app.get("/api/leaderboard/coins", (_req, res) => {
+  app.get("/api/leaderboard/coins", requireDashboardAuth, (_req, res) => {
     const rows = getCoinLeaderboard(15).map((u) => ({
       name: u.name || u.jid.split("@")[0],
       coins: u.coins,
@@ -66,7 +100,7 @@ export function startApi(port = Number(process.env.PORT) || 3001) {
     res.json(rows);
   });
 
-  app.get("/api/leaderboard/rep", (_req, res) => {
+  app.get("/api/leaderboard/rep", requireDashboardAuth, (_req, res) => {
     const rows = getRepLeaderboard(15).map((u) => ({
       name: u.name || u.jid.split("@")[0],
       rep: u.rep,
@@ -74,7 +108,7 @@ export function startApi(port = Number(process.env.PORT) || 3001) {
     res.json(rows);
   });
 
-  app.get("/api/giveaway", (_req, res) => {
+  app.get("/api/giveaway", requireDashboardAuth, (_req, res) => {
     const g = getActiveGiveaway();
     if (!g) {
       res.json(null);
@@ -88,7 +122,7 @@ export function startApi(port = Number(process.env.PORT) || 3001) {
     });
   });
 
-  app.get("/api/commands", (_req, res) => {
+  app.get("/api/commands", requireDashboardAuth, (_req, res) => {
     res.json(
       getAllCommands().map((c) => ({
         name: c.name,
@@ -96,11 +130,39 @@ export function startApi(port = Number(process.env.PORT) || 3001) {
         usage: c.usage || null,
         adminOnly: !!c.adminOnly,
         ownerOnly: !!c.ownerOnly,
+        category: c.category || (c.ownerOnly ? "owner" : c.adminOnly ? "admin" : "general"),
       }))
     );
   });
 
+  app.get("/api/session", requireDashboardAuth, (req: AuthedRequest, res) => {
+    const session = getSession();
+    res.json({
+      ...session,
+      bot: config.botName,
+      groupJid: config.groupJid,
+      adminEmail: req.adminEmail || null,
+      firebaseReady: firebaseReady() || dashboardConfig.devBypass,
+    });
+  });
+
+  app.post("/api/session/relink", requireDashboardAuth, async (_req, res) => {
+    try {
+      const session = await relinkWhatsApp();
+      res.json({ ok: true, session });
+    } catch (err) {
+      res.status(500).json({
+        error: err instanceof Error ? err.message : "Relink failed",
+      });
+    }
+  });
+
   app.listen(port, () => {
     console.log(`[API] http://localhost:${port}`);
+    if (dashboardConfig.devBypass) {
+      console.warn("[API] DASHBOARD_DEV_BYPASS=1 — dashboard auth is off");
+    } else if (!firebaseReady()) {
+      console.warn("[API] Firebase Admin is not configured. Dashboard mutations will 401 until you add credentials.");
+    }
   });
 }

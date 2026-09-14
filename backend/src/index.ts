@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { initDatabase } from "./database";
 import { startBot } from "./bot";
 import { startApi } from "./api";

@@ -1,45 +1,93 @@
 "use client";
 
-import { useState } from "react";
-import type { Health, Stats, XpRow, CoinRow, RepRow, Giveaway, Cmd } from "@/lib/api";
+import { useEffect, useState } from "react";
+import { api, type Cmd, type CoinRow, type Giveaway, type Health, type RepRow, type Stats, type XpRow } from "@/lib/api";
+import { SessionPanel } from "./SessionPanel";
 
-type Props = {
-  health: Health;
-  stats: Stats;
-  xp: XpRow[];
-  coins: CoinRow[];
-  rep: RepRow[];
-  giveaway: Giveaway;
-  commands: Cmd[];
-};
+type Props = { token: string };
 
-export function Dashboard({ health, stats, xp, coins, rep, giveaway, commands }: Props) {
+export function Dashboard({ token }: Props) {
   const [tab, setTab] = useState<"xp" | "coins" | "rep">("xp");
+  const [health, setHealth] = useState<Health | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [xp, setXp] = useState<XpRow[]>([]);
+  const [coins, setCoins] = useState<CoinRow[]>([]);
+  const [rep, setRep] = useState<RepRow[]>([]);
+  const [giveaway, setGiveaway] = useState<Giveaway>(null);
+  const [commands, setCommands] = useState<Cmd[]>([]);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      try {
+        const [h, s, x, c, r, g, cmds] = await Promise.all([
+          api.health(),
+          api.stats(token),
+          api.xp(token),
+          api.coins(token),
+          api.rep(token),
+          api.giveaway(token),
+          api.commands(token),
+        ]);
+        if (cancelled) return;
+        setHealth(h);
+        setStats(s);
+        setXp(x);
+        setCoins(c);
+        setRep(r);
+        setGiveaway(g);
+        setCommands(cmds);
+        setError("");
+      } catch (err) {
+        if (!cancelled) setError(err instanceof Error ? err.message : "API error");
+      }
+    }
+    void load();
+    const id = setInterval(() => void load(), 15000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [token]);
+
+  if (error && !stats) {
+    return (
+      <div className="container">
+        <header>
+          <h1>GANGSTER BOT</h1>
+        </header>
+        <div className="error">{error}</div>
+      </div>
+    );
+  }
 
   return (
     <div className="container">
       <header>
-        <h1>{health.bot || "GANGSTER BOT"}</h1>
+        <h1>{health?.bot || "GANGSTER BOT"}</h1>
         <span className="badge">
-          <span className={`dot ${health.connected ? "on" : ""}`} />
-          {health.connected ? "Connected" : "Disconnected"}
+          <span className={`dot ${health?.connected ? "on" : ""}`} />
+          {health?.connected ? "Connected" : health?.status || "Disconnected"}
         </span>
       </header>
 
       <div className="grid">
         <div className="card">
           <h3>Members</h3>
-          <div className="value">{stats.members}</div>
+          <div className="value">{stats?.members ?? "—"}</div>
         </div>
         <div className="card">
           <h3>Messages</h3>
-          <div className="value">{stats.totalMessages}</div>
+          <div className="value">{stats?.totalMessages ?? "—"}</div>
         </div>
         <div className="card">
           <h3>Total GC</h3>
-          <div className="value">{stats.totalCoins}</div>
+          <div className="value">{stats?.totalCoins ?? "—"}</div>
         </div>
       </div>
+
+      <SessionPanel token={token} />
 
       {giveaway && (
         <div className="section">
@@ -47,8 +95,7 @@ export function Dashboard({ health, stats, xp, coins, rep, giveaway, commands }:
           <div className="card">
             <strong>{giveaway.prize}</strong>
             <p className="muted">
-              {giveaway.entries} entries · ends{" "}
-              {new Date(giveaway.endsAt).toLocaleString()}
+              {giveaway.entries} entries · ends {new Date(giveaway.endsAt).toLocaleString()}
             </p>
           </div>
         </div>
@@ -60,10 +107,7 @@ export function Dashboard({ health, stats, xp, coins, rep, giveaway, commands }:
           <button className={`tab ${tab === "xp" ? "active" : ""}`} onClick={() => setTab("xp")}>
             XP
           </button>
-          <button
-            className={`tab ${tab === "coins" ? "active" : ""}`}
-            onClick={() => setTab("coins")}
-          >
+          <button className={`tab ${tab === "coins" ? "active" : ""}`} onClick={() => setTab("coins")}>
             Coins
           </button>
           <button className={`tab ${tab === "rep" ? "active" : ""}`} onClick={() => setTab("rep")}>

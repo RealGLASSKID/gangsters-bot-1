@@ -5,6 +5,7 @@ const me: Command = {
   name: "me",
   description: "Show your WhatsApp JID / LID",
   aliases: ["whoami", "jid"],
+  category: "identity",
   async execute(ctx, reply) {
     const { raw, pn, lid, primary } = ctx.sender;
     const lines = [

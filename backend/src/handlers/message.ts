@@ -11,13 +11,11 @@ import {
   getAfk,
   muteUser,
 } from "../database";
-import { CommandContext, GroupActions, GroupInfo } from "../types";
+import { CommandContext, GroupActions, GroupInfo, QuotedMessage, ReplyPayload } from "../types";
 import { logger } from "../utils/logger";
 import { rankTitle } from "../ranking";
 import { isFlooding, containsLink, containsBadWord } from "../moderation";
 import { matchesAny, participantMatches, senderFromKey, splitPair } from "../utils/ids";
-
-type SendFn = (jid: string, content: { text: string }) => Promise<unknown>;
 
 const FREE_ANYWHERE = new Set(["me", "whoami", "jid", "group", "gid", "groupid"]);
 
@@ -26,15 +24,105 @@ function getBody(msg: proto.IWebMessageInfo): string {
     msg.message?.conversation ||
     msg.message?.extendedTextMessage?.text ||
     msg.message?.imageMessage?.caption ||
+    msg.message?.videoMessage?.caption ||
     ""
   );
 }
 
-function buildActions(sock: WASocket, remoteJid: string): GroupActions {
+function quotedFrom(msg: proto.IWebMessageInfo): QuotedMessage | null {
+  const ctxInfo =
+    msg.message?.extendedTextMessage?.contextInfo ||
+    msg.message?.imageMessage?.contextInfo ||
+    msg.message?.videoMessage?.contextInfo;
+  const id = ctxInfo?.stanzaId;
+  if (!id) return null;
   return {
-    async kick(jid) {
+    id,
+    participant: ctxInfo.participant || null,
+    fromMe: !!ctxInfo.participant && ctxInfo.participant === (msg.key.participant || ""),
+  };
+}
+
+function mentionedFrom(msg: proto.IWebMessageInfo): string[] {
+  return (
+    msg.message?.extendedTextMessage?.contextInfo?.mentionedJid ||
+    msg.message?.imageMessage?.contextInfo?.mentionedJid ||
+    []
+  );
+}
+
+async function findParticipant(
+  sock: WASocket,
+  remoteJid: string,
+  jid: string
+) {
+  const meta = await sock.groupMetadata(remoteJid);
+  return meta.participants.find((x) =>
+    participantMatches(x as { id?: string; phoneNumber?: string; jid?: string; lid?: string }, {
+      raw: jid,
+      pn: jid.endsWith("@lid") ? null : jid,
+      lid: jid.endsWith("@lid") ? jid : null,
+      primary: jid,
+    })
+  );
+}
+
+function buildActions(sock: WASocket, remoteJid: string): GroupActions {
+  const update = async (jid: string, action: "remove" | "promote" | "demote") => {
+    try {
+      await sock.groupParticipantsUpdate(remoteJid, [jid], action);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  return {
+    kick: (jid) => update(jid, "remove"),
+    promote: (jid) => update(jid, "promote"),
+    demote: (jid) => update(jid, "demote"),
+    async deleteMessage(quoted) {
+      const attempts = [
+        { fromMe: quoted.fromMe, participant: quoted.participant || undefined },
+        { fromMe: true, participant: undefined },
+        { fromMe: false, participant: quoted.participant || undefined },
+      ];
+      for (const attempt of attempts) {
+        try {
+          await sock.sendMessage(remoteJid, {
+            delete: {
+              remoteJid,
+              fromMe: attempt.fromMe,
+              id: quoted.id,
+              participant: attempt.participant,
+            },
+          });
+          return true;
+        } catch {
+          /* try next shape */
+        }
+      }
+      return false;
+    },
+    async setSetting(setting) {
       try {
-        await sock.groupParticipantsUpdate(remoteJid, [jid], "remove");
+        await sock.groupSettingUpdate(remoteJid, setting);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    async setSubject(subject) {
+      try {
+        await sock.groupUpdateSubject(remoteJid, subject);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    async setDescription(desc) {
+      try {
+        await sock.groupUpdateDescription(remoteJid, desc);
         return true;
       } catch {
         return false;
@@ -42,15 +130,7 @@ function buildActions(sock: WASocket, remoteJid: string): GroupActions {
     },
     async isGroupAdmin(jid) {
       try {
-        const meta = await sock.groupMetadata(remoteJid);
-        const p = meta.participants.find((x) =>
-          participantMatches(x as { id?: string; phoneNumber?: string; jid?: string; lid?: string }, {
-            raw: jid,
-            pn: jid.endsWith("@lid") ? null : jid,
-            lid: jid.endsWith("@lid") ? jid : null,
-            primary: jid,
-          })
-        );
+        const p = await findParticipant(sock, remoteJid, jid);
         return !!(p && (p.admin === "admin" || p.admin === "superadmin"));
       } catch {
         return false;
@@ -107,11 +187,22 @@ function buildActions(sock: WASocket, remoteJid: string): GroupActions {
   };
 }
 
-export async function handleMessage(
-  msg: proto.IWebMessageInfo,
-  send: SendFn,
-  sock: WASocket
-) {
+async function tryDelete(sock: WASocket, msg: proto.IWebMessageInfo, remoteJid: string) {
+  try {
+    await sock.sendMessage(remoteJid, {
+      delete: {
+        remoteJid,
+        fromMe: false,
+        id: msg.key.id || "",
+        participant: msg.key.participant || undefined,
+      },
+    });
+  } catch {
+    /* bot is probably not a group admin */
+  }
+}
+
+export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) {
   try {
     if (!msg.message || msg.key.fromMe) return;
 
@@ -135,6 +226,7 @@ export async function handleMessage(
     const isGroup = remoteJid.endsWith("@g.us");
     const isConfiguredGroup = isGroup && remoteJid === config.groupJid;
     const isOwner = matchesAny(config.ownerJid, [sender.primary, sender.pn, sender.lid, sender.raw]);
+    const botJid = sock.user?.id || (sock.user as { lid?: string } | undefined)?.lid || null;
 
     const body = getBody(msg);
     const prefixed = body.startsWith(config.prefix);
@@ -142,11 +234,17 @@ export async function handleMessage(
     const [cmdName, ...args] = text ? text.split(/\s+/) : [""];
     const freeIdentity = prefixed && FREE_ANYWHERE.has(cmdName.toLowerCase());
 
-    // Identity commands work in any chat so you can discover JID / LID / group id
-    // before config is filled in. Everything else stays locked to the one group.
     if (!isConfiguredGroup && !freeIdentity) return;
 
     if (isConfiguredGroup && !isOwner && (isMuted(from) || isMuted(sender.raw))) return;
+
+    const sendText = async (payload: ReplyPayload) => {
+      if (typeof payload === "string") {
+        await sock.sendMessage(remoteJid, { text: payload });
+        return;
+      }
+      await sock.sendMessage(remoteJid, { text: payload.text, mentions: payload.mentions });
+    };
 
     if (isConfiguredGroup && !body.toLowerCase().startsWith(config.prefix + "afk")) {
       const wasAfk =
@@ -155,44 +253,42 @@ export async function handleMessage(
         (sender.pn ? clearAfk(sender.pn) : null);
       if (wasAfk) {
         const mins = Math.max(1, Math.round((Date.now() - wasAfk.since) / 60000));
-        await send(remoteJid, {
-          text: `👋 Welcome back *${senderName}* (AFK ${mins}m)${wasAfk.reason ? `\nReason was: ${wasAfk.reason}` : ""}`,
-        });
+        await sendText(
+          `👋 Welcome back *${senderName}* (AFK ${mins}m)${wasAfk.reason ? `\nReason was: ${wasAfk.reason}` : ""}`
+        );
       }
     }
 
     if (isConfiguredGroup) {
-      const mentioned = msg.message.extendedTextMessage?.contextInfo?.mentionedJid || [];
+      const mentioned = mentionedFrom(msg);
       for (const jid of mentioned) {
         const afk = getAfk(jid);
         if (afk) {
           const mins = Math.max(1, Math.round((Date.now() - afk.since) / 60000));
-          await send(remoteJid, {
-            text: `💤 That member is AFK (${mins}m)${afk.reason ? `: ${afk.reason}` : ""}`,
-          });
+          await sendText(`💤 That member is AFK (${mins}m)${afk.reason ? `: ${afk.reason}` : ""}`);
         }
       }
     }
 
     if (isConfiguredGroup && !isOwner && body) {
       if (isFlooding(from)) {
-        await send(remoteJid, { text: "⚠️ Flood detected — slow down." });
+        await sendText("⚠️ Flood detected — slow down.");
         return;
       }
       if (containsLink(body)) {
         const count = addWarning(from, "posted a link", "auto");
-        await send(remoteJid, {
-          text: `🔗 Links not allowed. Warning ${count}/3 for ${senderName}`,
-        });
+        await tryDelete(sock, msg, remoteJid);
+        await sendText(`🔗 Links not allowed. Warning ${count}/3 for ${senderName}`);
         if (count >= 3) {
           muteUser(from, "3 warnings (links)", "auto", 3600);
-          await send(remoteJid, { text: `${senderName} muted for 1h (3 warnings).` });
+          await sendText(`${senderName} muted for 1h (3 warnings).`);
         }
         return;
       }
       if (containsBadWord(body)) {
         const count = addWarning(from, "bad language", "auto");
-        await send(remoteJid, { text: `🚫 Watch the language. Warning ${count}/3` });
+        await tryDelete(sock, msg, remoteJid);
+        await sendText(`🚫 Watch the language. Warning ${count}/3`);
         return;
       }
     }
@@ -200,9 +296,9 @@ export async function handleMessage(
     if (isConfiguredGroup) {
       const levelUp = trackMessage(from, senderName);
       if (levelUp?.leveledUp) {
-        await send(remoteJid, {
-          text: `⬆️ *${senderName}* leveled up!\nLevel ${levelUp.oldLevel} → ${levelUp.newLevel}\nRank: ${rankTitle(levelUp.newLevel)}`,
-        });
+        await sendText(
+          `⬆️ *${senderName}* leveled up!\nLevel ${levelUp.oldLevel} → ${levelUp.newLevel}\nRank: ${rankTitle(levelUp.newLevel)}`
+        );
       }
     }
 
@@ -214,26 +310,27 @@ export async function handleMessage(
     let isAdmin = isOwner;
     if (!isAdmin && isGroup) {
       try {
-        const meta = await sock.groupMetadata(remoteJid);
-        const p = meta.participants.find((x) =>
-          participantMatches(x as { id?: string; phoneNumber?: string; jid?: string; lid?: string }, sender)
-        );
-        isAdmin = !!(p && (p.admin === "admin" || p.admin === "superadmin"));
+        const p = await findParticipant(sock, remoteJid, sender.primary);
+        const matched =
+          p ||
+          (await findParticipant(sock, remoteJid, sender.raw)) ||
+          (sender.lid ? await findParticipant(sock, remoteJid, sender.lid) : undefined);
+        isAdmin = !!(matched && (matched.admin === "admin" || matched.admin === "superadmin"));
       } catch {
         /* ignore */
       }
     }
 
     if (command.ownerOnly && !isOwner) {
-      await send(remoteJid, { text: "Owner only." });
+      await sendText("Owner only.");
       return;
     }
     if (command.adminOnly && !isAdmin) {
-      await send(remoteJid, { text: "Admin only." });
+      await sendText("Admins only.");
       return;
     }
     if (command.cooldown && isOnCooldown(from, command.name)) {
-      await send(remoteJid, { text: "Slow down." });
+      await sendText("Slow down.");
       return;
     }
 
@@ -241,16 +338,19 @@ export async function handleMessage(
       from,
       senderName,
       sender,
+      botJid,
       isOwner,
       isAdmin,
       isGroup,
       groupJid: isGroup ? remoteJid : null,
       args,
       body: text,
+      mentionedJids: mentionedFrom(msg),
+      quoted: quotedFrom(msg),
       actions: isGroup ? buildActions(sock, remoteJid) : undefined,
     };
 
-    await command.execute(ctx, (t) => send(remoteJid, { text: t }));
+    await command.execute(ctx, sendText);
     if (command.cooldown) setCooldown(from, command.name, command.cooldown);
   } catch (err) {
     logger.error(err, "message handler");

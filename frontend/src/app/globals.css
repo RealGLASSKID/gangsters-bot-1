@@ -181,3 +181,100 @@ th {
   border-radius: 8px;
   background: #1a1012;
 }
+
+.login {
+  max-width: 420px;
+  display: grid;
+  gap: 12px;
+}
+
+.login h2 {
+  font-size: 1.1rem;
+}
+
+label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+input {
+  background: #0c0c0e;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 1rem;
+}
+
+.btn {
+  background: var(--accent);
+  color: #111;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.btn.danger {
+  background: var(--red);
+  color: #111;
+}
+
+.form-error {
+  color: var(--red);
+  font-size: 0.85rem;
+}
+
+.signout-bar {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 16px 16px 0;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+
+.session-card {
+  display: grid;
+  gap: 12px;
+}
+
+.session-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.session-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.qr-wrap {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.qr-wrap img {
+  background: #fff;
+  border-radius: 8px;
+  padding: 8px;
+}

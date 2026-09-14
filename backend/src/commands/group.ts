@@ -4,6 +4,7 @@ const group: Command = {
   name: "group",
   description: "Show this group's JID and info",
   aliases: ["gid", "groupid"],
+  category: "identity",
   async execute(ctx, reply) {
     if (!ctx.groupJid || !ctx.actions) {
       await reply("Not in a group.");
