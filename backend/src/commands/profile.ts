@@ -1,10 +1,12 @@
 import { Command } from "../types";
 import { getUser, getUserRank } from "../database";
-import { rankTitle, xpProgress } from "../ranking";
+import { fullRank, xpProgress } from "../ranking";
 
 const profile: Command = {
   name: "profile",
   description: "Show your full profile",
+  aliases: ["mystats"],
+  category: "general",
   cooldown: 5,
   async execute(ctx, reply) {
     const user = getUser(ctx.from);
@@ -16,7 +18,19 @@ const profile: Command = {
     const position = getUserRank(ctx.from);
     const total = user.coins + user.bank;
     await reply(
-      `👤 *${user.name || ctx.senderName}*\n─────────────\nRank #${position} · ${rankTitle(user.level)}\nLevel: ${user.level}\nXP: ${user.xp} (${progress.current}/${progress.needed})\nMessages: ${user.message_count}\nCoins: ${user.coins} GC (bank ${user.bank})\nTotal: ${total} GC\nRep: ${user.rep ?? 0}\nDaily streak: ${user.daily_streak}\nBirthday: ${user.birthday || "not set"}\nJoined: ${user.join_date.slice(0, 10)}`
+      `👤 *${user.name || ctx.senderName}*\n` +
+      `─────────────\n` +
+      `${fullRank(user.level)}\n` +
+      `Rank #${position}\n` +
+      `Level: ${user.level}\n` +
+      `XP: ${user.xp.toLocaleString()} (${progress.current}/${progress.needed})\n` +
+      `Messages: ${user.message_count.toLocaleString()}\n` +
+      `Coins: ${user.coins.toLocaleString()} GC (Bank: ${user.bank.toLocaleString()})\n` +
+      `Total Wealth: ${total.toLocaleString()} GC\n` +
+      `Rep: ${user.rep ?? 0}\n` +
+      `Daily Streak: ${user.daily_streak} 🔥\n` +
+      `Birthday: ${user.birthday || "not set"}\n` +
+      `Joined: ${user.join_date.slice(0, 10)}`
     );
   },
 };

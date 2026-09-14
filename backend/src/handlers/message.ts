@@ -10,12 +10,33 @@ import {
   clearAfk,
   getAfk,
   muteUser,
+  getCustomCommand,
+  getSetting,
 } from "../database";
 import { CommandContext, GroupActions, GroupInfo, QuotedMessage, ReplyPayload } from "../types";
 import { logger } from "../utils/logger";
-import { rankTitle } from "../ranking";
-import { isFlooding, containsLink, containsBadWord } from "../moderation";
+import { fullRank } from "../ranking";
+import {
+  isFlooding,
+  containsLink,
+  containsBadWord,
+  isRepeatedMessage,
+  isCapsSpam,
+  tooManyMentions,
+} from "../moderation";
 import { matchesAny, participantMatches, senderFromKey, splitPair } from "../utils/ids";
+import { handleSopMediaSubmission } from "../commands/sopsubmit";
+
+// Commands that owner can use in private chat
+const DM_ALLOWED = new Set([
+  "me", "whoami", "jid", "group", "gid", "groupid",
+  "sop", "sopsubmit", "release",
+  "addcmd", "delcmd", "listcmd", "cmds", "customcmds",
+  "quickpoll", "qp", "poll",
+  "welcome", "setwelcome", "goodbye", "setgoodbye",
+  "banword", "moderation", "mod", "automod",
+  "help", "games",
+]);
 
 const FREE_ANYWHERE = new Set(["me", "whoami", "jid", "group", "gid", "groupid"]);
 
@@ -232,18 +253,48 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
     const prefixed = body.startsWith(config.prefix);
     const text = prefixed ? body.slice(config.prefix.length).trim() : "";
     const [cmdName, ...args] = text ? text.split(/\s+/) : [""];
-    const freeIdentity = prefixed && FREE_ANYWHERE.has(cmdName.toLowerCase());
+    const cmdLower = cmdName.toLowerCase();
+    const freeIdentity = prefixed && FREE_ANYWHERE.has(cmdLower);
+    const isDm = !isGroup;
+    const ownerDmAllowed = isDm && isOwner && (prefixed ? DM_ALLOWED.has(cmdLower) || /^\d+$/.test(cmdLower) : false);
 
-    if (!isConfiguredGroup && !freeIdentity) return;
+    // Allow: configured group OR free identity OR owner using allowed DM commands
+    if (!isConfiguredGroup && !freeIdentity && !ownerDmAllowed) {
+      // Still allow owner media submissions for SOP in DM (handled below)
+      const hasMedia = !!(msg.message?.imageMessage || msg.message?.videoMessage);
+      const caption = (msg.message?.imageMessage?.caption || msg.message?.videoMessage?.caption || "").trim();
+      const isSopCaption =
+        /^(!?sop|smash\s*or\s*pass)/i.test(caption) ||
+        /^smash\s*or\s*pass\s*[-:]/i.test(caption);
+      if (!(isDm && isOwner && hasMedia && isSopCaption)) {
+        return;
+      }
+    }
 
     if (isConfiguredGroup && !isOwner && (isMuted(from) || isMuted(sender.raw))) return;
 
     const sendText = async (payload: ReplyPayload) => {
+      // Show "typing..." indicator like a real WhatsApp user
+      try {
+        await sock.sendPresenceUpdate("composing", remoteJid);
+        // Small delay so the typing indicator is visible (1.0 – 1.8s)
+        await new Promise((r) => setTimeout(r, 1000 + Math.random() * 800));
+      } catch {
+        /* ignore presence errors */
+      }
+
       if (typeof payload === "string") {
         await sock.sendMessage(remoteJid, { text: payload });
-        return;
+      } else {
+        await sock.sendMessage(remoteJid, { text: payload.text, mentions: payload.mentions });
       }
-      await sock.sendMessage(remoteJid, { text: payload.text, mentions: payload.mentions });
+
+      // Stop typing indicator
+      try {
+        await sock.sendPresenceUpdate("paused", remoteJid);
+      } catch {
+        /* ignore */
+      }
     };
 
     if (isConfiguredGroup && !body.toLowerCase().startsWith(config.prefix + "afk")) {
@@ -271,25 +322,73 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
     }
 
     if (isConfiguredGroup && !isOwner && body) {
-      if (isFlooding(from)) {
-        await sendText("⚠️ Flood detected — slow down.");
-        return;
-      }
-      if (containsLink(body)) {
-        const count = addWarning(from, "posted a link", "auto");
-        await tryDelete(sock, msg, remoteJid);
-        await sendText(`🔗 Links not allowed. Warning ${count}/3 for ${senderName}`);
-        if (count >= 3) {
-          muteUser(from, "3 warnings (links)", "auto", 3600);
-          await sendText(`${senderName} muted for 1h (3 warnings).`);
+      const modOn = getSetting("mod_enabled", "1") === "1";
+
+      if (modOn) {
+        const mentioned = mentionedFrom(msg);
+        const linksOn = getSetting("mod_links", "1") === "1";
+        const badOn = getSetting("mod_badwords", "1") === "1";
+        const mentionsOn = getSetting("mod_mentions", "1") === "1";
+        const floodOn = getSetting("mod_flood", "1") === "1";
+        const repeatOn = getSetting("mod_repeat", "1") === "1";
+        const capsOn = getSetting("mod_caps", "1") === "1";
+
+        if (floodOn && isFlooding(from)) {
+          const count = addWarning(from, "message flood", "auto");
+          await sendText(`⚠️ Flood detected. Warning ${count}/3 for ${senderName}`);
+          if (count >= 3) {
+            muteUser(from, "3 warnings (flood)", "auto", 3600);
+            await sendText(`${senderName} muted for 1h (flood).`);
+          }
+          return;
         }
-        return;
-      }
-      if (containsBadWord(body)) {
-        const count = addWarning(from, "bad language", "auto");
-        await tryDelete(sock, msg, remoteJid);
-        await sendText(`🚫 Watch the language. Warning ${count}/3`);
-        return;
+
+        if (repeatOn && isRepeatedMessage(from, body)) {
+          const count = addWarning(from, "repeated messages", "auto");
+          await tryDelete(sock, msg, remoteJid);
+          await sendText(`🔁 Stop repeating the same message. Warning ${count}/3`);
+          if (count >= 3) {
+            muteUser(from, "3 warnings (spam)", "auto", 3600);
+            await sendText(`${senderName} muted for 1h (spam).`);
+          }
+          return;
+        }
+
+        if (mentionsOn && tooManyMentions(mentioned)) {
+          const count = addWarning(from, "excessive mentions", "auto");
+          await tryDelete(sock, msg, remoteJid);
+          await sendText(`📣 Too many mentions. Warning ${count}/3`);
+          return;
+        }
+
+        if (capsOn && isCapsSpam(body)) {
+          const count = addWarning(from, "caps spam", "auto");
+          await tryDelete(sock, msg, remoteJid);
+          await sendText(`🔠 Stop shouting (caps). Warning ${count}/3`);
+          return;
+        }
+
+        if (linksOn && containsLink(body)) {
+          const count = addWarning(from, "posted a link", "auto");
+          await tryDelete(sock, msg, remoteJid);
+          await sendText(`🔗 Links not allowed. Warning ${count}/3 for ${senderName}`);
+          if (count >= 3) {
+            muteUser(from, "3 warnings (links)", "auto", 3600);
+            await sendText(`${senderName} muted for 1h (3 warnings).`);
+          }
+          return;
+        }
+
+        if (badOn && containsBadWord(body)) {
+          const count = addWarning(from, "bad language", "auto");
+          await tryDelete(sock, msg, remoteJid);
+          await sendText(`🚫 Watch the language. Warning ${count}/3`);
+          if (count >= 3) {
+            muteUser(from, "3 warnings (language)", "auto", 3600);
+            await sendText(`${senderName} muted for 1h (language).`);
+          }
+          return;
+        }
       }
     }
 
@@ -297,15 +396,75 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
       const levelUp = trackMessage(from, senderName);
       if (levelUp?.leveledUp) {
         await sendText(
-          `⬆️ *${senderName}* leveled up!\nLevel ${levelUp.oldLevel} → ${levelUp.newLevel}\nRank: ${rankTitle(levelUp.newLevel)}`
+          `⬆️ *${senderName}* leveled up!\nLevel ${levelUp.oldLevel} → ${levelUp.newLevel}\nRank: ${fullRank(levelUp.newLevel)}`
         );
+      }
+    }
+
+    // ===== Owner DM: media + SOP caption → save as pending =====
+    if (isDm && isOwner) {
+      const hasMedia = !!(msg.message?.imageMessage || msg.message?.videoMessage);
+      const caption = (
+        msg.message?.imageMessage?.caption ||
+        msg.message?.videoMessage?.caption ||
+        body ||
+        ""
+      ).trim();
+
+      if (hasMedia) {
+        // Extract name from caption: "!sop Prince" or "Smash or Pass - Prince"
+        let targetName = "";
+        const m1 = caption.match(/^!?sop\s+(.+)$/i);
+        const m2 = caption.match(/^smash\s*or\s*pass\s*[-:]\s*(.+)$/i);
+        if (m1) targetName = m1[1].trim();
+        else if (m2) targetName = m2[1].trim();
+
+        if (targetName) {
+          await handleSopMediaSubmission(msg, sock, targetName, from, sendText);
+          return;
+        }
+      }
+    }
+
+    // Bare number in DM or group from owner/admin → treat as release ID
+    const bareNumber = text.match(/^(\d+)$/);
+    if (bareNumber && (isOwner || (isConfiguredGroup && isOwner))) {
+      const releaseCmd = getCommand("release");
+      if (releaseCmd) {
+        const ctxNum: CommandContext = {
+          from,
+          senderName,
+          sender,
+          botJid,
+          isOwner,
+          isAdmin: true,
+          isGroup,
+          groupJid: isGroup ? remoteJid : config.groupJid,
+          args: [bareNumber[1]],
+          body: bareNumber[1],
+          mentionedJids: [],
+          quoted: null,
+          actions: isGroup ? buildActions(sock, remoteJid) : undefined,
+        };
+        await releaseCmd.execute(ctxNum, sendText);
+        return;
       }
     }
 
     if (!prefixed || !text) return;
 
-    const command = getCommand(cmdName);
-    if (!command) return;
+    // Built-in command?
+    let command = getCommand(cmdName);
+
+    // Custom command fallback
+    if (!command) {
+      const custom = getCustomCommand(cmdName);
+      if (custom) {
+        await sendText(custom);
+        return;
+      }
+      return;
+    }
 
     let isAdmin = isOwner;
     if (!isAdmin && isGroup) {
@@ -319,6 +478,12 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
       } catch {
         /* ignore */
       }
+    }
+
+    // In DM only owner can run admin commands
+    if (isDm && !isOwner) {
+      await sendText("Owner only in private chat.");
+      return;
     }
 
     if (command.ownerOnly && !isOwner) {

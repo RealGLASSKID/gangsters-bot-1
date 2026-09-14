@@ -10,14 +10,18 @@ export default function GamesPage() {
 
   async function load() {
     setLoading(true);
-    const res = await authedFetch("games");
-    const json = await res.json();
-    setGames(json.data || []);
+    try {
+      const res = await authedFetch("games");
+      const json = await res.json();
+      setGames(json.data || []);
+    } catch {
+      /* ignore */
+    }
     setLoading(false);
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   async function toggle(id: string, enabled: boolean) {
@@ -26,37 +30,39 @@ export default function GamesPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, enabled }),
     });
-    load();
+    void load();
   }
 
   return (
     <div>
-      <h2 className="mb-2 text-xl font-semibold">Games</h2>
-      <p className="mb-6 text-sm text-zinc-500">
-        Drop a new file in <code className="text-zinc-400">gangster-bot-brain/src/bot/games/</code> and
-        restart the brain. This page only toggles whether a loaded game is playable.
-      </p>
+      <div className="page-header">
+        <div>
+          <h1>Games</h1>
+          <p className="subtitle">Enable or disable loaded games</p>
+        </div>
+      </div>
+
       {loading ? (
-        <p className="text-zinc-500">Loading…</p>
+        <p className="muted">Loading…</p>
+      ) : games.length === 0 ? (
+        <div className="card">
+          <p className="muted">No game definitions returned from the API yet.</p>
+        </div>
       ) : (
-        <div className="space-y-3">
+        <div className="cmd-list">
           {games.map((g) => (
-            <div
-              key={g.id}
-              className="flex items-center justify-between rounded-lg border border-zinc-800 bg-zinc-900 p-4"
-            >
-              <div>
-                <p className="font-medium">{g.name}</p>
-                <p className="text-sm text-zinc-500">{g.description}</p>
+            <div className="cmd" key={g.id}>
+              <strong>{g.name || g.id}</strong>
+              <span className="muted">{g.description || "—"}</span>
+              <div style={{ marginTop: 8 }}>
+                <button
+                  className={`btn ${g.enabled ? "danger" : ""}`}
+                  style={{ padding: "6px 12px", fontSize: "0.75rem" }}
+                  onClick={() => void toggle(g.id, !g.enabled)}
+                >
+                  {g.enabled ? "Disable" : "Enable"}
+                </button>
               </div>
-              <button
-                onClick={() => toggle(g.id, !g.enabled)}
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
-                  g.enabled ? "bg-emerald-950 text-emerald-300" : "bg-zinc-800 text-zinc-400"
-                }`}
-              >
-                {g.enabled ? "Enabled" : "Disabled"}
-              </button>
             </div>
           ))}
         </div>

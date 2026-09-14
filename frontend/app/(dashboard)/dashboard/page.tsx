@@ -1,44 +1,34 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { authedFetch } from "@/lib/firebase/useAuth";
-import type { BotUser, BotMessage } from "@/types";
+import { onAuthStateChanged } from "firebase/auth";
+import { clientAuth } from "@/lib/firebase/client";
+import { Dashboard } from "@/components/Dashboard";
 
 export default function OverviewPage() {
-  const [users, setUsers] = useState<BotUser[] | null>(null);
-  const [messages, setMessages] = useState<BotMessage[] | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    authedFetch("users")
-      .then((r) => r.json())
-      .then((r) => setUsers(r.data || []));
-    authedFetch("messages")
-      .then((r) => r.json())
-      .then((r) => setMessages(r.data || []));
+    const unsub = onAuthStateChanged(clientAuth, async (user) => {
+      if (user) {
+        const t = await user.getIdToken();
+        setToken(t);
+      } else {
+        setToken(null);
+      }
+      setReady(true);
+    });
+    return () => unsub();
   }, []);
 
-  const admins = users?.filter((u) => u.role !== "member").length ?? "…";
-  const total = users?.length ?? "…";
-  const messagesToday =
-    messages?.filter((m) => Date.now() - m.createdAt < 24 * 60 * 60 * 1000).length ?? "…";
+  if (!ready) {
+    return <div className="muted">Loading…</div>;
+  }
 
-  return (
-    <div>
-      <h2 className="mb-6 text-xl font-semibold">Overview</h2>
-      <div className="grid grid-cols-3 gap-4">
-        <StatCard label="Total users" value={total} />
-        <StatCard label="Admins / super-admins" value={admins} />
-        <StatCard label="Messages (24h)" value={messagesToday} />
-      </div>
-    </div>
-  );
-}
+  if (!token) {
+    return <div className="muted">Sign in required.</div>;
+  }
 
-function StatCard({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900 p-5">
-      <p className="text-xs uppercase tracking-wide text-zinc-500">{label}</p>
-      <p className="mt-2 text-2xl font-bold">{value}</p>
-    </div>
-  );
+  return <Dashboard token={token} />;
 }

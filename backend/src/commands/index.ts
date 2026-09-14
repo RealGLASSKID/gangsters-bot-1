@@ -52,6 +52,37 @@ import giveaway from "./giveaway";
 import me from "./me";
 import group from "./group";
 
+// New games
+import games from "./games";
+import truth from "./truth";
+import dare from "./dare";
+import tod from "./tod";
+import wyr from "./wyr";
+import nhie from "./nhie";
+import sop from "./sop";
+import mostlikely from "./mostlikely";
+import putafinger from "./putafinger";
+import naijaquiz from "./naijaquiz";
+import riddle from "./riddle";
+import scramble from "./scramble";
+import slang from "./slang";
+import proverb from "./proverb";
+
+// Admin / utility
+import addcmd from "./addcmd";
+import delcmd from "./delcmd";
+import listcmd from "./listcmd";
+import quickpoll from "./quickpoll";
+import sopsubmit from "./sopsubmit";
+import release from "./release";
+import welcome from "./welcome";
+import setwelcome from "./setwelcome";
+import goodbye from "./goodbye";
+import setgoodbye from "./setgoodbye";
+import poll from "./poll";
+import banword from "./banword";
+import moderation from "./moderation";
+
 const commands = new Map<string, Command>();
 
 function register(cmd: Command) {
@@ -72,6 +103,15 @@ function register(cmd: Command) {
   rps, guess, trivia, eightball, joke, fact,
   afk, birthday, mybirthday, rep, reptop, confess,
   giveaway,
+
+  // New games
+  games, truth, dare, tod, wyr, nhie, sop, mostlikely, putafinger,
+  naijaquiz, riddle, scramble, slang, proverb,
+
+  // Admin / utility
+  addcmd, delcmd, listcmd, quickpoll, sopsubmit, release,
+  welcome, setwelcome, goodbye, setgoodbye,
+  poll, banword, moderation,
 ].forEach(register);
 
 export function getCommand(name: string) {

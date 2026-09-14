@@ -29,17 +29,16 @@ export function xpProgress(xp: number): { level: number; current: number; needed
   return { level, current, needed };
 }
 
-const RANKS: { min: number; title: string }[] = [
-  { min: 1, title: "Street Rookie" },
-  { min: 5, title: "Corner Boy" },
-  { min: 10, title: "Hustler" },
-  { min: 15, title: "Soldier" },
-  { min: 20, title: "Enforcer" },
-  { min: 30, title: "Lieutenant" },
-  { min: 40, title: "Capo" },
-  { min: 50, title: "Underboss" },
-  { min: 70, title: "Boss" },
-  { min: 100, title: "Don" },
+const RANKS: { min: number; title: string; emoji: string }[] = [
+  { min: 1,  title: "Rookie",          emoji: "🥚" },
+  { min: 5,  title: "Street Member",   emoji: "🔰" },
+  { min: 10, title: "Hustler",         emoji: "😈" },
+  { min: 18, title: "Gangster",        emoji: "🔥" },
+  { min: 28, title: "OG",              emoji: "👑" },
+  { min: 40, title: "Elite Gangster",  emoji: "💎" },
+  { min: 55, title: "Boss",            emoji: "☠️" },
+  { min: 75, title: "Don",             emoji: "🕶️" },
+  { min: 100,title: "Legend",          emoji: "🏆" },
 ];
 
 export function rankTitle(level: number): string {
@@ -48,4 +47,16 @@ export function rankTitle(level: number): string {
     if (level >= r.min) title = r.title;
   }
   return title;
+}
+
+export function rankEmoji(level: number): string {
+  let emoji = RANKS[0].emoji;
+  for (const r of RANKS) {
+    if (level >= r.min) emoji = r.emoji;
+  }
+  return emoji;
+}
+
+export function fullRank(level: number): string {
+  return `${rankEmoji(level)} ${rankTitle(level)}`;
 }

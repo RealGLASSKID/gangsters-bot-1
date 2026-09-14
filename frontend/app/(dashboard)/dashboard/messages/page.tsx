@@ -9,46 +9,64 @@ export default function MessagesPage() {
   const [loading, setLoading] = useState(true);
 
   async function load() {
-    const res = await authedFetch("messages");
-    const json = await res.json();
-    setMessages(json.data || []);
+    try {
+      const res = await authedFetch("messages");
+      const json = await res.json();
+      setMessages(json.data || []);
+    } catch {
+      /* ignore */
+    }
     setLoading(false);
   }
 
   useEffect(() => {
-    load();
-    const interval = setInterval(load, 5000); // simple polling; swap for Firestore onSnapshot if you want realtime
+    void load();
+    const interval = setInterval(() => void load(), 5000);
     return () => clearInterval(interval);
   }, []);
 
   return (
     <div>
-      <h2 className="mb-6 text-xl font-semibold">Messages</h2>
+      <div className="page-header">
+        <div>
+          <h1>Messages</h1>
+          <p className="subtitle">Recent bot traffic</p>
+        </div>
+      </div>
+
       {loading ? (
-        <p className="text-zinc-500">Loading…</p>
+        <p className="muted">Loading…</p>
+      ) : messages.length === 0 ? (
+        <div className="card">
+          <p className="muted">No messages yet.</p>
+        </div>
       ) : (
-        <div className="space-y-2">
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {messages.map((m) => (
             <div
               key={m.id}
-              className="flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900 p-3 text-sm"
+              className="card"
+              style={{ padding: "12px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}
             >
               <span
-                className={`mt-0.5 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium uppercase ${
-                  m.direction === "inbound"
-                    ? "bg-blue-950 text-blue-300"
-                    : "bg-purple-950 text-purple-300"
-                }`}
+                className="badge"
+                style={{
+                  fontSize: "0.65rem",
+                  background:
+                    m.direction === "inbound" ? "rgba(59,130,246,0.15)" : "rgba(168,85,247,0.15)",
+                  borderColor:
+                    m.direction === "inbound" ? "rgba(59,130,246,0.3)" : "rgba(168,85,247,0.3)",
+                  color: m.direction === "inbound" ? "#93c5fd" : "#d8b4fe",
+                }}
               >
                 {m.direction}
               </span>
-              <div className="min-w-0 flex-1">
-                <p className="truncate font-mono text-xs text-zinc-500">{m.phone}</p>
-                <p className="whitespace-pre-wrap">{m.text}</p>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginBottom: 4 }}>
+                  {m.from || m.to || "—"} · {m.createdAt ? new Date(m.createdAt).toLocaleString() : ""}
+                </div>
+                <div style={{ fontSize: "0.9rem", wordBreak: "break-word" }}>{m.body || m.text || "—"}</div>
               </div>
-              <span className="shrink-0 text-xs text-zinc-600">
-                {new Date(m.createdAt).toLocaleTimeString()}
-              </span>
             </div>
           ))}
         </div>

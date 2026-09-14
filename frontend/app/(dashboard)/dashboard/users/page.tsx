@@ -11,14 +11,18 @@ export default function UsersPage() {
 
   async function load() {
     setLoading(true);
-    const res = await authedFetch("users");
-    const json = await res.json();
-    setUsers(json.data || []);
+    try {
+      const res = await authedFetch("users");
+      const json = await res.json();
+      setUsers(json.data || []);
+    } catch {
+      setError("Failed to load users");
+    }
     setLoading(false);
   }
 
   useEffect(() => {
-    load();
+    void load();
   }, []);
 
   async function updateRole(phone: string, role: Role) {
@@ -33,7 +37,7 @@ export default function UsersPage() {
       setError(json.error?.message || "Failed to update role");
       return;
     }
-    load();
+    void load();
   }
 
   async function toggleBan(phone: string, banned: boolean) {
@@ -42,61 +46,79 @@ export default function UsersPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone, banned }),
     });
-    load();
+    void load();
   }
 
   return (
     <div>
-      <h2 className="mb-6 text-xl font-semibold">Users & Roles</h2>
-      {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+      <div className="page-header">
+        <div>
+          <h1>Users & Roles</h1>
+          <p className="subtitle">Manage members, roles and bans</p>
+        </div>
+      </div>
+
+      {error && <p className="form-error" style={{ marginBottom: 12 }}>{error}</p>}
+
       {loading ? (
-        <p className="text-zinc-500">Loading…</p>
+        <p className="muted">Loading…</p>
       ) : (
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-zinc-800 text-left text-zinc-500">
-              <th className="py-2 pr-4 font-medium">Phone</th>
-              <th className="py-2 pr-4 font-medium">Name</th>
-              <th className="py-2 pr-4 font-medium">Role</th>
-              <th className="py-2 pr-4 font-medium">Last seen</th>
-              <th className="py-2 pr-4 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {users.map((u) => (
-              <tr key={u.phone} className="border-b border-zinc-900">
-                <td className="py-2 pr-4 font-mono">{u.phone}</td>
-                <td className="py-2 pr-4">{u.displayName || "—"}</td>
-                <td className="py-2 pr-4">
-                  <select
-                    value={u.role}
-                    onChange={(e) => updateRole(u.phone, e.target.value as Role)}
-                    className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs"
-                  >
-                    <option value="member">member</option>
-                    <option value="admin">admin</option>
-                    <option value="super_admin">super_admin</option>
-                  </select>
-                </td>
-                <td className="py-2 pr-4 text-zinc-500">
-                  {new Date(u.lastSeenAt).toLocaleString()}
-                </td>
-                <td className="py-2 pr-4">
-                  <button
-                    onClick={() => toggleBan(u.phone, !u.banned)}
-                    className={`rounded px-2 py-1 text-xs ${
-                      u.banned
-                        ? "bg-zinc-800 text-zinc-300"
-                        : "bg-red-950 text-red-300 hover:bg-red-900"
-                    }`}
-                  >
-                    {u.banned ? "Unban" : "Ban"}
-                  </button>
-                </td>
+        <div className="card padded-0">
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Role</th>
+                <th>Status</th>
+                <th>Actions</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {users.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="muted">No users yet</td>
+                </tr>
+              ) : (
+                users.map((u) => (
+                  <tr key={u.phone || u.id}>
+                    <td>{u.name || "—"}</td>
+                    <td><code>{u.phone}</code></td>
+                    <td>{u.role}</td>
+                    <td>{u.banned ? "Banned" : "Active"}</td>
+                    <td>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <select
+                          value={u.role}
+                          onChange={(e) => void updateRole(u.phone, e.target.value as Role)}
+                          style={{
+                            background: "var(--bg-elevated)",
+                            color: "var(--text)",
+                            border: "1px solid var(--border)",
+                            borderRadius: 6,
+                            padding: "4px 8px",
+                            fontSize: "0.8rem",
+                          }}
+                        >
+                          <option value="member">member</option>
+                          <option value="admin">admin</option>
+                          <option value="superadmin">superadmin</option>
+                        </select>
+                        <button
+                          className="btn ghost"
+                          style={{ padding: "4px 10px", fontSize: "0.75rem" }}
+                          onClick={() => void toggleBan(u.phone, !u.banned)}
+                        >
+                          {u.banned ? "Unban" : "Ban"}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );

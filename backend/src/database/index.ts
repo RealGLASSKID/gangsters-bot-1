@@ -113,6 +113,39 @@ export function initDatabase() {
       jid TEXT NOT NULL,
       PRIMARY KEY (giveaway_id, jid)
     );
+
+    CREATE TABLE IF NOT EXISTS custom_commands (
+      name TEXT PRIMARY KEY,
+      response TEXT NOT NULL,
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS pending_sop (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      target_name TEXT NOT NULL,
+      media_path TEXT NOT NULL,
+      media_type TEXT NOT NULL,
+      caption TEXT,
+      submitted_by TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now')),
+      used INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS polls (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      question TEXT NOT NULL,
+      options TEXT NOT NULL,
+      mode TEXT DEFAULT 'single',
+      created_by TEXT,
+      created_at TEXT DEFAULT (datetime('now')),
+      sent INTEGER DEFAULT 0,
+      closed INTEGER DEFAULT 0
+    );
+
+    CREATE TABLE IF NOT EXISTS banned_words (
+      word TEXT PRIMARY KEY
+    );
   `);
 
   migrateUsers();
@@ -461,4 +494,181 @@ export function getGiveawayEntries(giveawayId: number): string[] {
 
 export function endGiveaway(giveawayId: number, winnerJid: string | null) {
   db.prepare("UPDATE giveaways SET active = 0, winner_jid = ? WHERE id = ?").run(winnerJid, giveawayId);
+}
+
+// ========== Custom Commands ==========
+export function setCustomCommand(name: string, response: string, byJid: string) {
+  const key = name.toLowerCase().replace(/[^a-z0-9_]/g, "");
+  if (!key) return false;
+  db.prepare(`
+    INSERT INTO custom_commands (name, response, created_by)
+    VALUES (?, ?, ?)
+    ON CONFLICT(name) DO UPDATE SET response = excluded.response, created_by = excluded.created_by
+  `).run(key, response, byJid);
+  return true;
+}
+
+export function getCustomCommand(name: string): string | null {
+  const row = db
+    .prepare("SELECT response FROM custom_commands WHERE name = ?")
+    .get(name.toLowerCase()) as { response: string } | undefined;
+  return row?.response ?? null;
+}
+
+export function deleteCustomCommand(name: string): boolean {
+  const result = db.prepare("DELETE FROM custom_commands WHERE name = ?").run(name.toLowerCase());
+  return result.changes > 0;
+}
+
+export function listCustomCommands(): { name: string; response: string }[] {
+  return db.prepare("SELECT name, response FROM custom_commands ORDER BY name").all() as {
+    name: string;
+    response: string;
+  }[];
+}
+
+// ========== Pending Smash or Pass ==========
+export function addPendingSop(
+  targetName: string,
+  mediaPath: string,
+  mediaType: string,
+  caption: string | null,
+  submittedBy: string
+): number {
+  const result = db
+    .prepare(
+      `INSERT INTO pending_sop (target_name, media_path, media_type, caption, submitted_by)
+       VALUES (?, ?, ?, ?, ?)`
+    )
+    .run(targetName, mediaPath, mediaType, caption, submittedBy);
+  return Number(result.lastInsertRowid);
+}
+
+export function getPendingSop(id: number) {
+  return db
+    .prepare(
+      `SELECT id, target_name, media_path, media_type, caption, submitted_by, used
+       FROM pending_sop WHERE id = ?`
+    )
+    .get(id) as
+    | {
+        id: number;
+        target_name: string;
+        media_path: string;
+        media_type: string;
+        caption: string | null;
+        submitted_by: string;
+        used: number;
+      }
+    | undefined;
+}
+
+export function markSopUsed(id: number) {
+  db.prepare("UPDATE pending_sop SET used = 1 WHERE id = ?").run(id);
+}
+
+export function listPendingSop(limit = 20) {
+  return db
+    .prepare(
+      `SELECT id, target_name, media_type, created_at, used
+       FROM pending_sop ORDER BY id DESC LIMIT ?`
+    )
+    .all(limit) as {
+    id: number;
+    target_name: string;
+    media_type: string;
+    created_at: string;
+    used: number;
+  }[];
+}
+
+// ========== Settings helpers ==========
+export function getSetting(key: string, fallback = ""): string {
+  const row = db.prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined;
+  return row?.value ?? fallback;
+}
+
+export function setSetting(key: string, value: string) {
+  db.prepare(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = excluded.value`
+  ).run(key, value);
+}
+
+// ========== Polls ==========
+export function createPoll(question: string, options: string[], mode: string, byJid: string): number {
+  const result = db
+    .prepare(
+      `INSERT INTO polls (question, options, mode, created_by) VALUES (?, ?, ?, ?)`
+    )
+    .run(question, JSON.stringify(options), mode, byJid);
+  return Number(result.lastInsertRowid);
+}
+
+export function getPoll(id: number) {
+  return db.prepare("SELECT * FROM polls WHERE id = ?").get(id) as
+    | {
+        id: number;
+        question: string;
+        options: string;
+        mode: string;
+        created_by: string | null;
+        created_at: string;
+        sent: number;
+        closed: number;
+      }
+    | undefined;
+}
+
+export function markPollSent(id: number) {
+  db.prepare("UPDATE polls SET sent = 1 WHERE id = ?").run(id);
+}
+
+export function markPollClosed(id: number) {
+  db.prepare("UPDATE polls SET closed = 1 WHERE id = ?").run(id);
+}
+
+export function deletePoll(id: number): boolean {
+  const r = db.prepare("DELETE FROM polls WHERE id = ?").run(id);
+  return r.changes > 0;
+}
+
+export function listPolls(limit = 15) {
+  return db
+    .prepare(
+      `SELECT id, question, sent, closed, created_at FROM polls ORDER BY id DESC LIMIT ?`
+    )
+    .all(limit) as { id: number; question: string; sent: number; closed: number; created_at: string }[];
+}
+
+// ========== Banned words ==========
+export function addBannedWord(word: string): boolean {
+  const w = word.toLowerCase().trim();
+  if (!w) return false;
+  try {
+    db.prepare("INSERT INTO banned_words (word) VALUES (?)").run(w);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function removeBannedWord(word: string): boolean {
+  const r = db.prepare("DELETE FROM banned_words WHERE word = ?").run(word.toLowerCase().trim());
+  return r.changes > 0;
+}
+
+export function listBannedWords(): string[] {
+  return (db.prepare("SELECT word FROM banned_words ORDER BY word").all() as { word: string }[]).map(
+    (r) => r.word
+  );
+}
+
+export function isBannedWord(text: string): boolean {
+  const lower = text.toLowerCase();
+  const words = listBannedWords();
+  // Also keep the hard-coded ones as base
+  const base = ["fuck", "shit", "bitch", "asshole", "nigga", "nigger"];
+  const all = [...new Set([...base, ...words])];
+  return all.some((w) => lower.includes(w));
 }

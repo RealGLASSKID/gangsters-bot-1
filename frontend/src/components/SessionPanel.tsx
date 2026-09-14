@@ -33,7 +33,13 @@ export function SessionPanel({ token }: { token: string }) {
     setBusy(true);
     try {
       const res = await api.relink(token);
-      setSession({ ...res.session, bot: session?.bot || "GANGSTER BOT", groupJid: session?.groupJid || "", adminEmail: session?.adminEmail || null, firebaseReady: true });
+      setSession({
+        ...res.session,
+        bot: session?.bot || "GANGSTER BOT",
+        groupJid: session?.groupJid || "",
+        adminEmail: session?.adminEmail || null,
+        firebaseReady: true,
+      });
       setTimeout(() => void load(), 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Relink failed");
@@ -47,28 +53,34 @@ export function SessionPanel({ token }: { token: string }) {
 
   return (
     <div className="section">
-      <h2>WhatsApp session</h2>
+      <h2 className="section-title">WhatsApp Session</h2>
       <div className="card session-card">
         <div className="session-row">
           <span className="badge">
             <span className={`dot ${connected ? "on" : ""}`} />
             {connected ? "Connected" : status}
           </span>
-          {session?.user && <code className="muted">{session.user}</code>}
+          {session?.user && <code>{session.user}</code>}
         </div>
+
         {session?.lastError && <p className="form-error">{session.lastError}</p>}
         {error && <p className="form-error">{error}</p>}
+
         {session?.qrDataUrl && (
           <div className="qr-wrap">
             <img src={session.qrDataUrl} alt="WhatsApp QR code" width={220} height={220} />
-            <p className="muted">Open WhatsApp on the bot phone → Linked devices → Link a device.</p>
+            <p className="muted">
+              Open WhatsApp on the bot phone → Linked devices → Link a device → scan this QR.
+            </p>
           </div>
         )}
+
         {!session?.qrDataUrl && !connected && (
           <p className="muted">No QR yet. Click Relink if the session is dead.</p>
         )}
+
         <div className="session-actions">
-          <button className="btn" type="button" onClick={() => void load()} disabled={busy}>
+          <button className="btn ghost" type="button" onClick={() => void load()} disabled={busy}>
             Refresh
           </button>
           <button className="btn danger" type="button" onClick={() => void relink()} disabled={busy}>
