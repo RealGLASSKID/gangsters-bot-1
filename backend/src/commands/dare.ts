@@ -1,4 +1,5 @@
 import { Command } from "../types";
+import { resolveTarget, displayId } from "../utils/target";
 
 const DARES = [
   "Send a voice note singing the chorus of any Afrobeats song.",
@@ -25,13 +26,22 @@ const DARES = [
 
 const dare: Command = {
   name: "dare",
-  description: "Get a random Dare",
+  description: "Random Dare (you or @user)",
+  usage: "!dare | !dare @user",
   aliases: ["d"],
   category: "games",
   cooldown: 4,
-  async execute(_ctx, reply) {
+  async execute(ctx, reply) {
+    const target = resolveTarget(ctx, ctx.from) || ctx.from;
     const q = DARES[Math.floor(Math.random() * DARES.length)];
-    await reply(`🔥 *DARE*\n\n${q}\n\nNo backing out 😂`);
+    const name = target === ctx.from ? ctx.senderName : displayId(target);
+    const mentions = target !== ctx.from ? [target] : undefined;
+    const text = `🔥 *DARE* for *${name}*
+
+${q}
+
+No backing out 😂`;
+    await reply(mentions ? { text, mentions } : text);
   },
 };
 

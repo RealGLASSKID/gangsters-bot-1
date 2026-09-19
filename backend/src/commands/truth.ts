@@ -1,4 +1,5 @@
 import { Command } from "../types";
+import { resolveTarget, displayId } from "../utils/target";
 
 const TRUTHS = [
   // Funny / light
@@ -27,13 +28,18 @@ const TRUTHS = [
 
 const truth: Command = {
   name: "truth",
-  description: "Get a random Truth question",
+  description: "Random Truth (you or @user)",
+  usage: "!truth | !truth @user",
   aliases: ["t"],
   category: "games",
   cooldown: 4,
-  async execute(_ctx, reply) {
+  async execute(ctx, reply) {
+    const target = resolveTarget(ctx, ctx.from) || ctx.from;
     const q = TRUTHS[Math.floor(Math.random() * TRUTHS.length)];
-    await reply(`🗣️ *TRUTH*\n\n${q}\n\nAnswer honestly 👀`);
+    const name = target === ctx.from ? ctx.senderName : displayId(target);
+    const mentions = target !== ctx.from ? [target] : undefined;
+    const text = `🗣️ *TRUTH* for *${name}*\n\n${q}\n\nAnswer honestly 👀`;
+    await reply(mentions ? { text, mentions } : text);
   },
 };
 

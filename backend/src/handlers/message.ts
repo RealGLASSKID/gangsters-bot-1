@@ -110,7 +110,7 @@ function buildActions(sock: WASocket, remoteJid: string): GroupActions {
       const norm = (j: string) => j.replace(/:\d+@/, "@").split("@")[0] || "";
       const part = quoted.participant || "";
       const isOwn = !!part && norm(part) === norm(botId);
-    
+
       const attempts = isOwn
         ? [
             { fromMe: true as const },
@@ -121,7 +121,7 @@ function buildActions(sock: WASocket, remoteJid: string): GroupActions {
             { fromMe: false as const },
             { fromMe: true as const },
           ];
-    
+
       for (const attempt of attempts) {
         try {
           await sock.sendMessage(remoteJid, {
@@ -134,7 +134,7 @@ function buildActions(sock: WASocket, remoteJid: string): GroupActions {
           });
           return true;
         } catch {
-          /* try next shape */
+          /* try next */
         }
       }
       return false;

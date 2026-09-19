@@ -1,7 +1,7 @@
 import Database from "better-sqlite3";
 import path from "path";
 import fs from "fs";
-import { levelFromXp, XP_COOLDOWN_MS, XP_PER_MESSAGE } from "../ranking";
+import { levelFromXp, totalXpForLevel, XP_COOLDOWN_MS, XP_PER_MESSAGE } from "../ranking";
 import { DAILY_BASE, DAILY_STREAK_BONUS, DAILY_STREAK_CAP } from "../economy";
 
 const dataDir = path.join(process.cwd(), "data");
@@ -209,6 +209,55 @@ export function trackMessage(
 
 export function getUser(jid: string): UserRow | undefined {
   return db.prepare("SELECT * FROM users WHERE jid = ?").get(jid) as UserRow | undefined;
+}
+
+
+export function getRecentlyActive(minutes = 15): UserRow[] {
+  return db
+    .prepare(
+      `SELECT * FROM users
+       WHERE last_active IS NOT NULL
+         AND datetime(last_active) >= datetime('now', ?)
+       ORDER BY last_active DESC
+       LIMIT 50`
+    )
+    .all(`-${Math.max(1, minutes)} minutes`) as UserRow[];
+}
+
+export function setUserXp(jid: string, xp: number) {
+  const safeXp = Math.max(0, Math.floor(xp));
+  const level = levelFromXp(safeXp);
+  ensureUser(jid);
+  db.prepare("UPDATE users SET xp = ?, level = ? WHERE jid = ?").run(safeXp, level, jid);
+  return getUser(jid);
+}
+
+export function setUserLevel(jid: string, level: number) {
+  const lvl = Math.max(1, Math.floor(level));
+  const xp = totalXpForLevel(lvl);
+  ensureUser(jid);
+  db.prepare("UPDATE users SET level = ?, xp = ? WHERE jid = ?").run(lvl, xp, jid);
+  return getUser(jid);
+}
+
+export function setUserCoins(jid: string, coins: number, bank?: number) {
+  ensureUser(jid);
+  if (bank === undefined) {
+    db.prepare("UPDATE users SET coins = ? WHERE jid = ?").run(Math.max(0, Math.floor(coins)), jid);
+  } else {
+    db.prepare("UPDATE users SET coins = ?, bank = ? WHERE jid = ?").run(
+      Math.max(0, Math.floor(coins)),
+      Math.max(0, Math.floor(bank)),
+      jid
+    );
+  }
+  return getUser(jid);
+}
+
+export function listUsers(limit = 100): UserRow[] {
+  return db
+    .prepare("SELECT * FROM users ORDER BY xp DESC, message_count DESC LIMIT ?")
+    .all(limit) as UserRow[];
 }
 
 export function ensureUser(jid: string, name?: string) {

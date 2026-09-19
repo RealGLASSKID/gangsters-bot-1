@@ -1,11 +1,16 @@
-const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
+const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
 async function request<T>(path: string, token: string | null, init?: RequestInit): Promise<T> {
   const headers = new Headers(init?.headers);
   headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
 
-  const res = await fetch(`${API}${path}`, { ...init, headers, cache: "no-store" });
+  let res: Response;
+  try {
+    res = await fetch(`${API}${path}`, { ...init, headers, cache: "no-store" });
+  } catch {
+    throw new Error(`Failed to fetch — is the backend running at ${API}?`);
+  }
   if (!res.ok) {
     let detail = `API ${path} failed (${res.status})`;
     try {
@@ -37,6 +42,18 @@ export type Stats = {
 export type XpRow = { name: string; level: number; xp: number; messages: number };
 export type CoinRow = { name: string; coins: number; bank: number; total: number };
 export type RepRow = { name: string; rep: number };
+
+export type MemberRow = {
+  jid: string;
+  name: string;
+  level: number;
+  xp: number;
+  coins: number;
+  bank: number;
+  messages: number;
+  rep: number;
+  lastActive: string;
+};
 
 export type Giveaway = {
   id: number;
@@ -73,6 +90,22 @@ export const api = {
   xp: (token: string) => request<XpRow[]>("/api/leaderboard/xp", token),
   coins: (token: string) => request<CoinRow[]>("/api/leaderboard/coins", token),
   rep: (token: string) => request<RepRow[]>("/api/leaderboard/rep", token),
+  members: (token: string) => request<MemberRow[]>("/api/members", token),
+  setXp: (token: string, jid: string, xp: number) =>
+    request<{ ok: boolean }>("/api/members/xp", token, {
+      method: "POST",
+      body: JSON.stringify({ jid, xp }),
+    }),
+  setLevel: (token: string, jid: string, level: number) =>
+    request<{ ok: boolean }>("/api/members/level", token, {
+      method: "POST",
+      body: JSON.stringify({ jid, level }),
+    }),
+  setCoins: (token: string, jid: string, amount: number, mode: "set" | "add" = "add") =>
+    request<{ ok: boolean }>("/api/members/coins", token, {
+      method: "POST",
+      body: JSON.stringify({ jid, amount, mode }),
+    }),
   giveaway: (token: string) => request<Giveaway>("/api/giveaway", token),
   commands: (token: string) => request<Cmd[]>("/api/commands", token),
   session: (token: string) => request<Session>("/api/session", token),

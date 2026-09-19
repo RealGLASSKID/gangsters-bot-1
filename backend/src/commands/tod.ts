@@ -1,4 +1,5 @@
 import { Command } from "../types";
+import { resolveTarget, displayId } from "../utils/target";
 
 const TRUTHS = [
   "What is the most embarrassing thing you have ever done in public?",
@@ -38,18 +39,28 @@ const DARES = [
 
 const tod: Command = {
   name: "tod",
-  description: "Truth or Dare (random)",
+  description: "Truth or Dare (you or @user)",
+  usage: "!tod | !tod @user",
   aliases: ["truthordare"],
   category: "games",
   cooldown: 4,
   async execute(ctx, reply) {
+    const target = resolveTarget(ctx, ctx.from) || ctx.from;
+    const name = target === ctx.from ? ctx.senderName : displayId(target);
+    const mentions = target !== ctx.from ? [target] : undefined;
     const choice = Math.random() < 0.5 ? "truth" : "dare";
     if (choice === "truth") {
       const q = TRUTHS[Math.floor(Math.random() * TRUTHS.length)];
-      await reply(`🗣️ *TRUTH* for *${ctx.senderName}*\n\n${q}`);
+      const text = `🗣️ *TRUTH* for *${name}*
+
+${q}`;
+      await reply(mentions ? { text, mentions } : text);
     } else {
       const q = DARES[Math.floor(Math.random() * DARES.length)];
-      await reply(`🔥 *DARE* for *${ctx.senderName}*\n\n${q}`);
+      const text = `🔥 *DARE* for *${name}*
+
+${q}`;
+      await reply(mentions ? { text, mentions } : text);
     }
   },
 };

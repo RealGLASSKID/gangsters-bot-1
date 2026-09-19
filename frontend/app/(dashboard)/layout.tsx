@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/firebase/useAuth";
 
 const NAV = [
   { href: "/dashboard", label: "Overview", icon: "◆" },
+  { href: "/dashboard/members", label: "Members", icon: "●" },
   { href: "/dashboard/users", label: "Users & Roles", icon: "◎" },
   { href: "/dashboard/games", label: "Games", icon: "▸" },
   { href: "/dashboard/messages", label: "Messages", icon: "✉" },

@@ -6,6 +6,13 @@ import {
   getRepLeaderboard,
   getActiveGiveaway,
   getGiveawayEntries,
+  listUsers,
+  setUserXp,
+  setUserLevel,
+  setUserCoins,
+  addCoins,
+  ensureUser,
+  getUser,
 } from "./database";
 import { getSession, relinkWhatsApp } from "./bot";
 import { config, dashboardConfig } from "./config";
@@ -38,14 +45,28 @@ async function requireDashboardAuth(req: AuthedRequest, res: Response, next: Nex
   }
 }
 
-export function startApi(port = Number(process.env.PORT) || 3001) {
+export function startApi(port = Number(process.env.PORT) || 4000) {
   const app = express();
   app.use(express.json());
 
   app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", dashboardConfig.origin);
+    const origin = req.headers.origin || "";
+    const allowed =
+      dashboardConfig.origin === "*" ||
+      !dashboardConfig.origin ||
+      origin === dashboardConfig.origin ||
+      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+
+    if (allowed && origin) {
+      res.header("Access-Control-Allow-Origin", origin);
+    } else if (dashboardConfig.origin === "*" || !dashboardConfig.origin) {
+      res.header("Access-Control-Allow-Origin", "*");
+    } else {
+      res.header("Access-Control-Allow-Origin", dashboardConfig.origin);
+    }
     res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
-    res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
+    res.header("Access-Control-Allow-Credentials", "true");
     if (req.method === "OPTIONS") {
       res.sendStatus(204);
       return;
@@ -81,31 +102,34 @@ export function startApi(port = Number(process.env.PORT) || 3001) {
   });
 
   app.get("/api/leaderboard/xp", requireDashboardAuth, (_req, res) => {
-    const rows = getLeaderboard(15).map((u) => ({
-      name: u.name || u.jid.split("@")[0],
-      level: u.level,
-      xp: u.xp,
-      messages: u.message_count,
-    }));
-    res.json(rows);
+    res.json(
+      getLeaderboard(15).map((u) => ({
+        name: u.name || u.jid.split("@")[0],
+        level: u.level,
+        xp: u.xp,
+        messages: u.message_count,
+      }))
+    );
   });
 
   app.get("/api/leaderboard/coins", requireDashboardAuth, (_req, res) => {
-    const rows = getCoinLeaderboard(15).map((u) => ({
-      name: u.name || u.jid.split("@")[0],
-      coins: u.coins,
-      bank: u.bank,
-      total: u.coins + u.bank,
-    }));
-    res.json(rows);
+    res.json(
+      getCoinLeaderboard(15).map((u) => ({
+        name: u.name || u.jid.split("@")[0],
+        coins: u.coins,
+        bank: u.bank,
+        total: u.coins + u.bank,
+      }))
+    );
   });
 
   app.get("/api/leaderboard/rep", requireDashboardAuth, (_req, res) => {
-    const rows = getRepLeaderboard(15).map((u) => ({
-      name: u.name || u.jid.split("@")[0],
-      rep: u.rep,
-    }));
-    res.json(rows);
+    res.json(
+      getRepLeaderboard(15).map((u) => ({
+        name: u.name || u.jid.split("@")[0],
+        rep: u.rep,
+      }))
+    );
   });
 
   app.get("/api/giveaway", requireDashboardAuth, (_req, res) => {
@@ -135,6 +159,56 @@ export function startApi(port = Number(process.env.PORT) || 3001) {
     );
   });
 
+  app.get("/api/members", requireDashboardAuth, (_req, res) => {
+    res.json(
+      listUsers(200).map((u) => ({
+        jid: u.jid,
+        name: u.name || u.jid.split("@")[0],
+        level: u.level,
+        xp: u.xp,
+        coins: u.coins,
+        bank: u.bank,
+        messages: u.message_count,
+        rep: u.rep ?? 0,
+        lastActive: u.last_active,
+      }))
+    );
+  });
+
+  app.post("/api/members/xp", requireDashboardAuth, (req, res) => {
+    const jid = String(req.body?.jid || "").trim();
+    const xp = Number(req.body?.xp);
+    if (!jid || Number.isNaN(xp)) {
+      res.status(400).json({ error: "jid and xp required" });
+      return;
+    }
+    res.json({ ok: true, user: setUserXp(jid, xp) });
+  });
+
+  app.post("/api/members/level", requireDashboardAuth, (req, res) => {
+    const jid = String(req.body?.jid || "").trim();
+    const level = Number(req.body?.level);
+    if (!jid || Number.isNaN(level)) {
+      res.status(400).json({ error: "jid and level required" });
+      return;
+    }
+    res.json({ ok: true, user: setUserLevel(jid, level) });
+  });
+
+  app.post("/api/members/coins", requireDashboardAuth, (req, res) => {
+    const jid = String(req.body?.jid || "").trim();
+    const mode = String(req.body?.mode || "set");
+    const amount = Number(req.body?.amount);
+    if (!jid || Number.isNaN(amount)) {
+      res.status(400).json({ error: "jid and amount required" });
+      return;
+    }
+    ensureUser(jid);
+    if (mode === "add") addCoins(jid, Math.floor(amount));
+    else setUserCoins(jid, amount, req.body?.bank !== undefined ? Number(req.body.bank) : undefined);
+    res.json({ ok: true, user: getUser(jid) });
+  });
+
   app.get("/api/session", requireDashboardAuth, (req: AuthedRequest, res) => {
     const session = getSession();
     res.json({
@@ -162,7 +236,9 @@ export function startApi(port = Number(process.env.PORT) || 3001) {
     if (dashboardConfig.devBypass) {
       console.warn("[API] DASHBOARD_DEV_BYPASS=1 — dashboard auth is off");
     } else if (!firebaseReady()) {
-      console.warn("[API] Firebase Admin is not configured. Dashboard mutations will 401 until you add credentials.");
+      console.warn(
+        "[API] Firebase Admin not configured. Set DASHBOARD_DEV_BYPASS=1 for local dashboard."
+      );
     }
   });
 }

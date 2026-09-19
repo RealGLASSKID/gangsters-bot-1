@@ -82,6 +82,8 @@ import setgoodbye from "./setgoodbye";
 import poll from "./poll";
 import banword from "./banword";
 import moderation from "./moderation";
+import online from "./online";
+import views from "./views";
 
 const commands = new Map<string, Command>();
 
@@ -111,7 +113,7 @@ function register(cmd: Command) {
   // Admin / utility
   addcmd, delcmd, listcmd, quickpoll, sopsubmit, release,
   welcome, setwelcome, goodbye, setgoodbye,
-  poll, banword, moderation,
+  poll, banword, moderation, online, views,
 ].forEach(register);
 
 export function getCommand(name: string) {
