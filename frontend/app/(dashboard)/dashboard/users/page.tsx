@@ -81,9 +81,11 @@ export default function UsersPage() {
                 </tr>
               ) : (
                 users.map((u) => (
-                  <tr key={u.phone || u.id}>
-                    <td>{u.name || "—"}</td>
-                    <td><code>{u.phone}</code></td>
+                  <tr key={u.phone}>
+                    <td>{u.displayName || "—"}</td>
+                    <td>
+                      <code>{u.phone}</code>
+                    </td>
                     <td>{u.role}</td>
                     <td>{u.banned ? "Banned" : "Active"}</td>
                     <td>
@@ -102,7 +104,7 @@ export default function UsersPage() {
                         >
                           <option value="member">member</option>
                           <option value="admin">admin</option>
-                          <option value="superadmin">superadmin</option>
+                          <option value="super_admin">super_admin</option>
                         </select>
                         <button
                           className="btn ghost"

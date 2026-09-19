@@ -9,8 +9,8 @@ function envList(name: string): string[] {
 
 export const config: BotConfig = {
   prefix: process.env.PREFIX || "!",
-  ownerJid: process.env.OWNER_JID || "YOUR_NUMBER@s.whatsapp.net",
-  groupJid: process.env.GROUP_JID || "YOUR_GROUP@g.us",
+  ownerJid: process.env.OWNER_JID || "2348032164823@s.whatsapp.net",
+  groupJid: process.env.GROUP_JID || "120363429272802165@g.us",
   botName: process.env.BOT_NAME || "GANGSTER BOT",
 };
 

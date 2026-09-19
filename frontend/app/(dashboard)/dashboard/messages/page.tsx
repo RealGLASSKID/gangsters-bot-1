@@ -46,26 +46,44 @@ export default function MessagesPage() {
             <div
               key={m.id}
               className="card"
-              style={{ padding: "12px 16px", display: "flex", gap: 12, alignItems: "flex-start" }}
+              style={{
+                padding: "12px 16px",
+                display: "flex",
+                gap: 12,
+                alignItems: "flex-start",
+              }}
             >
               <span
                 className="badge"
                 style={{
                   fontSize: "0.65rem",
                   background:
-                    m.direction === "inbound" ? "rgba(59,130,246,0.15)" : "rgba(168,85,247,0.15)",
+                    m.direction === "inbound"
+                      ? "rgba(59,130,246,0.15)"
+                      : "rgba(168,85,247,0.15)",
                   borderColor:
-                    m.direction === "inbound" ? "rgba(59,130,246,0.3)" : "rgba(168,85,247,0.3)",
+                    m.direction === "inbound"
+                      ? "rgba(59,130,246,0.3)"
+                      : "rgba(168,85,247,0.3)",
                   color: m.direction === "inbound" ? "#93c5fd" : "#d8b4fe",
                 }}
               >
                 {m.direction}
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: "0.8rem", color: "var(--muted)", marginBottom: 4 }}>
-                  {m.from || m.to || "—"} · {m.createdAt ? new Date(m.createdAt).toLocaleString() : ""}
+                <div
+                  style={{
+                    fontSize: "0.8rem",
+                    color: "var(--muted)",
+                    marginBottom: 4,
+                  }}
+                >
+                  {m.phone || "—"} ·{" "}
+                  {m.createdAt ? new Date(m.createdAt).toLocaleString() : ""}
                 </div>
-                <div style={{ fontSize: "0.9rem", wordBreak: "break-word" }}>{m.body || m.text || "—"}</div>
+                <div style={{ fontSize: "0.9rem", wordBreak: "break-word" }}>
+                  {m.text || "—"}
+                </div>
               </div>
             </div>
           ))}

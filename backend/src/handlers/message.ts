@@ -54,13 +54,16 @@ function quotedFrom(msg: proto.IWebMessageInfo): QuotedMessage | null {
   const ctxInfo =
     msg.message?.extendedTextMessage?.contextInfo ||
     msg.message?.imageMessage?.contextInfo ||
-    msg.message?.videoMessage?.contextInfo;
+    msg.message?.videoMessage?.contextInfo ||
+    msg.message?.documentMessage?.contextInfo ||
+    msg.message?.audioMessage?.contextInfo ||
+    msg.message?.stickerMessage?.contextInfo;
   const id = ctxInfo?.stanzaId;
   if (!id) return null;
   return {
     id,
     participant: ctxInfo.participant || null,
-    fromMe: !!ctxInfo.participant && ctxInfo.participant === (msg.key.participant || ""),
+    fromMe: false,
   };
 }
 
@@ -103,11 +106,22 @@ function buildActions(sock: WASocket, remoteJid: string): GroupActions {
     promote: (jid) => update(jid, "promote"),
     demote: (jid) => update(jid, "demote"),
     async deleteMessage(quoted) {
-      const attempts = [
-        { fromMe: quoted.fromMe, participant: quoted.participant || undefined },
-        { fromMe: true, participant: undefined },
-        { fromMe: false, participant: quoted.participant || undefined },
-      ];
+      const botId = sock.user?.id || "";
+      const norm = (j: string) => j.replace(/:\d+@/, "@").split("@")[0] || "";
+      const part = quoted.participant || "";
+      const isOwn = !!part && norm(part) === norm(botId);
+    
+      const attempts = isOwn
+        ? [
+            { fromMe: true as const },
+            { fromMe: true as const, participant: part || undefined },
+          ]
+        : [
+            { fromMe: false as const, participant: part || undefined },
+            { fromMe: false as const },
+            { fromMe: true as const },
+          ];
+    
       for (const attempt of attempts) {
         try {
           await sock.sendMessage(remoteJid, {
@@ -115,7 +129,7 @@ function buildActions(sock: WASocket, remoteJid: string): GroupActions {
               remoteJid,
               fromMe: attempt.fromMe,
               id: quoted.id,
-              participant: attempt.participant,
+              ...(attempt.participant ? { participant: attempt.participant } : {}),
             },
           });
           return true;
