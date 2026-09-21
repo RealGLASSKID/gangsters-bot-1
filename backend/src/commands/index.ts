@@ -1,5 +1,6 @@
 import { Command } from "../types";
 import ping from "./ping";
+import hi from "./hi";
 import help from "./help";
 import rank from "./rank";
 import level from "./level";
@@ -96,7 +97,7 @@ function register(cmd: Command) {
 }
 
 [
-  ping, help, me, group, admins,
+  ping, hi, help, me, group, admins,
   rank, level, profile, leaderboard, top,
   balance, daily, work, bank, deposit, withdraw, give,
   shop, inventory, coinflip, dice, richest,
