@@ -1,6 +1,6 @@
 import { Command } from "../types";
-import { addWarning } from "../database";
-import { displayId, resolveTarget } from "../utils/target";
+import { addWarning, findUser } from "../database";
+import { resolveTargetJid, displayId } from "../utils/target";
 import { matchesAny } from "../utils/ids";
 
 const warn: Command = {
@@ -11,7 +11,11 @@ const warn: Command = {
   category: "admin",
   cooldown: 3,
   async execute(ctx, reply) {
-    const target = resolveTarget(ctx);
+    const target = await resolveTargetJid(ctx, null);
+    if (!target || !ctx.mentionedJids[0] && !ctx.args[0]) {
+      await reply("Usage: !warn @user [reason]");
+      return;
+    }
     if (!target) {
       await reply("Usage: !warn @user [reason]");
       return;
@@ -21,17 +25,19 @@ const warn: Command = {
       return;
     }
 
-    const numIdx = ctx.args.findIndex((a) => a.replace(/\D/g, "").length >= 8);
     const reason =
       (ctx.mentionedJids[0]
-        ? ctx.args.join(" ")
-        : numIdx >= 0
-          ? ctx.args.slice(numIdx + 1).join(" ")
-          : ctx.args.join(" ")
-      ).trim() || "no reason";
+        ? ctx.args.join(" ").replace(/@\S+/g, "").trim()
+        : ctx.args.slice(1).join(" ").trim()) || "no reason";
 
     const count = addWarning(target, reason, ctx.from);
-    await reply(`Warned ${displayId(target)}\nReason: ${reason}\nTotal: ${count}/3`);
+    const user = findUser(target);
+    const name = user?.name || displayId(target);
+    const mention = ctx.mentionedJids[0] || target;
+    await reply({
+      text: `⚠️ Warned *${name}*\nReason: ${reason}\nTotal: ${count}/3`,
+      mentions: [mention],
+    });
   },
 };
 

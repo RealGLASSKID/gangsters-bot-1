@@ -1,7 +1,7 @@
 import { Command } from "../types";
-import { getUser } from "../database";
+import { findUser } from "../database";
 import { rankTitle, xpProgress } from "../ranking";
-import { resolveTarget, displayId } from "../utils/target";
+import { resolveTargetJid, displayId } from "../utils/target";
 
 const level: Command = {
   name: "level",
@@ -10,19 +10,19 @@ const level: Command = {
   category: "general",
   cooldown: 5,
   async execute(ctx, reply) {
-    const target = resolveTarget(ctx, ctx.from) || ctx.from;
-    const user = getUser(target);
+    const target = await resolveTargetJid(ctx, ctx.from);
+    const user = findUser(target);
     if (!user) {
       await reply(
-        target === ctx.from
+        target === ctx.from || target === ctx.sender.primary
           ? "No data yet. Send a message first."
-          : `No data for @${displayId(target)} yet.`
+          : `No data for @${displayId(target)} yet.\nThey need to chat in the group once.`
       );
       return;
     }
     const { current, needed } = xpProgress(user.xp);
     const name = user.name || displayId(target);
-    const mentions = target !== ctx.from ? [target] : undefined;
+    const mentions = ctx.mentionedJids[0] ? [ctx.mentionedJids[0]] : undefined;
     const text = `*${name}*\nLevel ${user.level} (${rankTitle(user.level)})\n${current}/${needed} XP to next level`;
     await reply(mentions ? { text, mentions } : text);
   },

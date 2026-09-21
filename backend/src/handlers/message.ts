@@ -20,6 +20,8 @@ import {
   isFlooding,
   containsLink,
   containsBadWord,
+  containsGroupAd,
+  checkRuleViolation,
   isRepeatedMessage,
   isCapsSpam,
   tooManyMentions,
@@ -385,10 +387,56 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
         if (linksOn && containsLink(body)) {
           const count = addWarning(from, "posted a link", "auto");
           await tryDelete(sock, msg, remoteJid);
-          await sendText(`🔗 Links not allowed. Warning ${count}/3 for ${senderName}`);
+          await sendText({
+            text: `🔗 Links not allowed.
+⚠️ Warning ${count}/3 for @${senderName.split(" ")[0]} (${senderName})`,
+            mentions: [from],
+          });
           if (count >= 3) {
             muteUser(from, "3 warnings (links)", "auto", 3600);
-            await sendText(`${senderName} muted for 1h (3 warnings).`);
+            await sendText({ text: `🔇 @${senderName} muted for 1h (links).`, mentions: [from] });
+          }
+          return;
+        }
+
+        // Group advertising / "join my group" etc.
+        if (linksOn && containsGroupAd(body)) {
+          const count = addWarning(from, "group advertising", "auto");
+          await tryDelete(sock, msg, remoteJid);
+          await sendText({
+            text: `🚫 *No promoting other groups.*
+⚠️ Warning ${count}/3 for *${senderName}*`,
+            mentions: [from],
+          });
+          if (count >= 3) {
+            muteUser(from, "3 warnings (group ads)", "auto", 3600);
+            await sendText({ text: `🔇 *${senderName}* muted for 1h (group ads).`, mentions: [from] });
+          }
+          return;
+        }
+
+        // Keyword rules from group_rules table
+        const violated = checkRuleViolation(body);
+        if (violated) {
+          const count = addWarning(from, `rule: ${violated.title}`, "auto");
+          await tryDelete(sock, msg, remoteJid);
+          await sendText({
+            text:
+              `⚠️ *${senderName}* broke a group rule.
+` +
+              `Rule: *${violated.title}*
+` +
+              `${violated.body}
+` +
+              `Warning ${count}/3`,
+            mentions: [from],
+          });
+          if (count >= 3) {
+            muteUser(from, `3 warnings (${violated.title})`, "auto", 3600);
+            await sendText({
+              text: `🔇 *${senderName}* muted for 1h (too many warnings).`,
+              mentions: [from],
+            });
           }
           return;
         }
@@ -396,10 +444,17 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
         if (badOn && containsBadWord(body)) {
           const count = addWarning(from, "bad language", "auto");
           await tryDelete(sock, msg, remoteJid);
-          await sendText(`🚫 Watch the language. Warning ${count}/3`);
+          await sendText({
+            text: `🚫 Watch the language.
+⚠️ Warning ${count}/3 for *${senderName}*`,
+            mentions: [from],
+          });
           if (count >= 3) {
             muteUser(from, "3 warnings (language)", "auto", 3600);
-            await sendText(`${senderName} muted for 1h (language).`);
+            await sendText({
+              text: `🔇 *${senderName}* muted for 1h (language).`,
+              mentions: [from],
+            });
           }
           return;
         }

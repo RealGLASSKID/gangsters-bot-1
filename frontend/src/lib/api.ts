@@ -109,6 +109,33 @@ export const api = {
   giveaway: (token: string) => request<Giveaway>("/api/giveaway", token),
   commands: (token: string) => request<Cmd[]>("/api/commands", token),
   session: (token: string) => request<Session>("/api/session", token),
+  rules: (token: string) =>
+    request<
+      Array<{
+        id: number;
+        title: string;
+        body: string;
+        keywords: string;
+        enabled: number;
+        sort_order: number;
+      }>
+    >("/api/rules", token),
+  addRule: (token: string, title: string, body: string, keywords = "") =>
+    request<{ ok: boolean; id: number }>("/api/rules", token, {
+      method: "POST",
+      body: JSON.stringify({ title, body, keywords }),
+    }),
+  updateRule: (
+    token: string,
+    id: number,
+    data: { title?: string; body?: string; keywords?: string; enabled?: number }
+  ) =>
+    request<{ ok: boolean }>(`/api/rules/${id}`, token, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    }),
+  deleteRule: (token: string, id: number) =>
+    request<{ ok: boolean }>(`/api/rules/${id}/delete`, token, { method: "POST" }),
   relink: (token: string) =>
     request<{ ok: boolean; session: Session }>("/api/session/relink", token, { method: "POST" }),
 };

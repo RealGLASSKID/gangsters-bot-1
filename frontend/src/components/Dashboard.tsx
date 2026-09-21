@@ -61,6 +61,7 @@ export function Dashboard({ token }: Props) {
   }, [token]);
 
   if (error && !stats) {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
     return (
       <div>
         <div className="page-header">
@@ -72,7 +73,14 @@ export function Dashboard({ token }: Props) {
         <div className="card">
           <p className="form-error">{error}</p>
           <p className="muted" style={{ marginTop: 8 }}>
-            Make sure the backend is running on the API URL.
+            Expected API: <code>{apiBase}</code>
+          </p>
+          <p className="muted" style={{ marginTop: 8 }}>
+            1. Backend running? Open <code>{apiBase}/api/health</code> in your browser — you must see JSON.
+            <br />
+            2. Frontend <code>.env</code> must have <code>NEXT_PUBLIC_API_URL={apiBase}</code>
+            <br />
+            3. Restart frontend after changing .env
           </p>
         </div>
       </div>

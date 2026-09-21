@@ -13,6 +13,10 @@ import {
   addCoins,
   ensureUser,
   getUser,
+  listGroupRules,
+  addGroupRule,
+  updateGroupRule,
+  deleteGroupRule,
 } from "./database";
 import { getSession, relinkWhatsApp } from "./bot";
 import { config, dashboardConfig } from "./config";
@@ -22,7 +26,8 @@ import { firebaseReady, verifyIdToken } from "./auth/firebase";
 type AuthedRequest = Request & { adminEmail?: string | null };
 
 async function requireDashboardAuth(req: AuthedRequest, res: Response, next: NextFunction) {
-  if (dashboardConfig.devBypass) {
+  // Local/dev: skip Firebase when bypass is on OR Firebase Admin is not configured
+  if (dashboardConfig.devBypass || !firebaseReady()) {
     req.adminEmail = "dev@localhost";
     next();
     return;
@@ -50,23 +55,12 @@ export function startApi(port = Number(process.env.PORT) || 4000) {
   app.use(express.json());
 
   app.use((req, res, next) => {
-    const origin = req.headers.origin || "";
-    const allowed =
-      dashboardConfig.origin === "*" ||
-      !dashboardConfig.origin ||
-      origin === dashboardConfig.origin ||
-      /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
-
-    if (allowed && origin) {
-      res.header("Access-Control-Allow-Origin", origin);
-    } else if (dashboardConfig.origin === "*" || !dashboardConfig.origin) {
-      res.header("Access-Control-Allow-Origin", "*");
-    } else {
-      res.header("Access-Control-Allow-Origin", dashboardConfig.origin);
-    }
+    const origin = req.headers.origin || "*";
+    res.header("Access-Control-Allow-Origin", origin === "null" ? "*" : origin);
     res.header("Access-Control-Allow-Headers", "Content-Type, Authorization");
     res.header("Access-Control-Allow-Methods", "GET, POST, PATCH, OPTIONS");
     res.header("Access-Control-Allow-Credentials", "true");
+    res.header("Vary", "Origin");
     if (req.method === "OPTIONS") {
       res.sendStatus(204);
       return;
@@ -207,6 +201,46 @@ export function startApi(port = Number(process.env.PORT) || 4000) {
     if (mode === "add") addCoins(jid, Math.floor(amount));
     else setUserCoins(jid, amount, req.body?.bank !== undefined ? Number(req.body.bank) : undefined);
     res.json({ ok: true, user: getUser(jid) });
+  });
+
+
+  // —— Rules admin ——
+  app.get("/api/rules", requireDashboardAuth, (_req, res) => {
+    res.json(listGroupRules(false));
+  });
+
+  app.post("/api/rules", requireDashboardAuth, (req, res) => {
+    const title = String(req.body?.title || "").trim();
+    const body = String(req.body?.body || "").trim();
+    const keywords = String(req.body?.keywords || "").trim();
+    if (!title || !body) {
+      res.status(400).json({ error: "title and body required" });
+      return;
+    }
+    const id = addGroupRule(title, body, keywords);
+    res.json({ ok: true, id });
+  });
+
+  app.patch("/api/rules/:id", requireDashboardAuth, (req, res) => {
+    const id = Number(req.params.id);
+    const ok = updateGroupRule(id, {
+      title: req.body?.title,
+      body: req.body?.body,
+      keywords: req.body?.keywords,
+      enabled: req.body?.enabled !== undefined ? Number(req.body.enabled) : undefined,
+      sort_order: req.body?.sort_order !== undefined ? Number(req.body.sort_order) : undefined,
+    });
+    if (!ok) {
+      res.status(404).json({ error: "Rule not found" });
+      return;
+    }
+    res.json({ ok: true });
+  });
+
+  app.post("/api/rules/:id/delete", requireDashboardAuth, (req, res) => {
+    const id = Number(req.params.id);
+    const ok = deleteGroupRule(id);
+    res.json({ ok });
   });
 
   app.get("/api/session", requireDashboardAuth, (req: AuthedRequest, res) => {

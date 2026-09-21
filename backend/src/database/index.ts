@@ -146,9 +146,25 @@ export function initDatabase() {
     CREATE TABLE IF NOT EXISTS banned_words (
       word TEXT PRIMARY KEY
     );
+
+    CREATE TABLE IF NOT EXISTS group_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      title TEXT NOT NULL,
+      body TEXT NOT NULL,
+      keywords TEXT DEFAULT '',
+      enabled INTEGER DEFAULT 1,
+      sort_order INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now'))
+    );
+
   `);
 
   migrateUsers();
+  try {
+    seedDefaultRulesIfEmpty();
+  } catch {
+    /* table may not exist on first partial migrate */
+  }
   console.log("[DB] ready →", dbPath);
 }
 
@@ -209,6 +225,28 @@ export function trackMessage(
 
 export function getUser(jid: string): UserRow | undefined {
   return db.prepare("SELECT * FROM users WHERE jid = ?").get(jid) as UserRow | undefined;
+}
+
+/** Look up user by phone JID or LID-style id (tries common variants). */
+export function findUser(jid: string): UserRow | undefined {
+  const direct = getUser(jid);
+  if (direct) return direct;
+  const bare = jid.split("@")[0]?.split(":")[0] || "";
+  if (!bare) return undefined;
+  const variants = [
+    `${bare}@s.whatsapp.net`,
+    `${bare}@lid`,
+    jid,
+  ];
+  for (const v of variants) {
+    const u = getUser(v);
+    if (u) return u;
+  }
+  // last resort: match bare number prefix in jid column
+  const row = db
+    .prepare("SELECT * FROM users WHERE jid LIKE ? LIMIT 1")
+    .get(`${bare}@%`) as UserRow | undefined;
+  return row;
 }
 
 
@@ -720,4 +758,90 @@ export function isBannedWord(text: string): boolean {
   const base = ["fuck", "shit", "bitch", "asshole", "nigga", "nigger"];
   const all = [...new Set([...base, ...words])];
   return all.some((w) => lower.includes(w));
+}
+
+
+// —— Group rules (enforceable) ——
+export function listGroupRules(enabledOnly = false): Array<{
+  id: number;
+  title: string;
+  body: string;
+  keywords: string;
+  enabled: number;
+  sort_order: number;
+}> {
+  if (enabledOnly) {
+    return db
+      .prepare("SELECT * FROM group_rules WHERE enabled = 1 ORDER BY sort_order, id")
+      .all() as any[];
+  }
+  return db.prepare("SELECT * FROM group_rules ORDER BY sort_order, id").all() as any[];
+}
+
+export function addGroupRule(title: string, body: string, keywords = "", sortOrder = 0): number {
+  const r = db
+    .prepare(
+      "INSERT INTO group_rules (title, body, keywords, sort_order) VALUES (?, ?, ?, ?)"
+    )
+    .run(title.trim(), body.trim(), keywords.trim().toLowerCase(), sortOrder);
+  return Number(r.lastInsertRowid);
+}
+
+export function updateGroupRule(
+  id: number,
+  data: { title?: string; body?: string; keywords?: string; enabled?: number; sort_order?: number }
+): boolean {
+  const row = db.prepare("SELECT * FROM group_rules WHERE id = ?").get(id) as any;
+  if (!row) return false;
+  db.prepare(
+    `UPDATE group_rules SET title = ?, body = ?, keywords = ?, enabled = ?, sort_order = ? WHERE id = ?`
+  ).run(
+    data.title ?? row.title,
+    data.body ?? row.body,
+    data.keywords !== undefined ? data.keywords.trim().toLowerCase() : row.keywords,
+    data.enabled !== undefined ? data.enabled : row.enabled,
+    data.sort_order !== undefined ? data.sort_order : row.sort_order,
+    id
+  );
+  return true;
+}
+
+export function deleteGroupRule(id: number): boolean {
+  const r = db.prepare("DELETE FROM group_rules WHERE id = ?").run(id);
+  return r.changes > 0;
+}
+
+export function seedDefaultRulesIfEmpty() {
+  const c = db.prepare("SELECT COUNT(*) AS c FROM group_rules").get() as { c: number };
+  if (c.c > 0) return;
+  const defaults: Array<[string, string, string]> = [
+    ["18+ only", "Strictly 18+ only.", "underage,minor,i am 16,i am 17"],
+    ["Respect members", "Respect all members at all times.", "idiot,stupid,shut up,mumu,fool"],
+    ["No harassment", "No harassment, bullying, or threats.", "kill yourself,i will beat you,i will find you"],
+    ["Privacy", "No sharing personal information of members.", "this is his number,her number is,house address"],
+    ["No scams", "No scams, fraud, or misleading content.", "send money,investment opportunity,double your money"],
+    ["No group ads", "No promoting or mentioning other groups.", "join my group,join our group,group link,new group,chat.whatsapp.com,my group link"],
+    ["No spam", "No spam or excessive advertising.", "buy now,click this link,promo code"],
+  ];
+  const ins = db.prepare(
+    "INSERT INTO group_rules (title, body, keywords, sort_order) VALUES (?, ?, ?, ?)"
+  );
+  defaults.forEach((d, i) => ins.run(d[0], d[1], d[2], i + 1));
+}
+
+export function findViolatedRule(text: string): { id: number; title: string; body: string } | null {
+  const lower = text.toLowerCase();
+  const rules = listGroupRules(true);
+  for (const r of rules) {
+    const keys = (r.keywords || "")
+      .split(",")
+      .map((k) => k.trim())
+      .filter(Boolean);
+    for (const k of keys) {
+      if (k && lower.includes(k)) {
+        return { id: r.id, title: r.title, body: r.body };
+      }
+    }
+  }
+  return null;
 }

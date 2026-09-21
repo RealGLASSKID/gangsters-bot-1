@@ -1,4 +1,4 @@
-import { isBannedWord } from "./database";
+import { isBannedWord, findViolatedRule } from "./database";
 
 const floodMap = new Map<string, number[]>();
 const repeatMap = new Map<string, { text: string; count: number; at: number }>();
@@ -9,6 +9,9 @@ const REPEAT_WINDOW_MS = 15000;
 const REPEAT_MAX = 3;
 
 const LINK_RE = /https?:\/\/|www\.|wa\.me\/|chat\.whatsapp\.com\//i;
+
+const GROUP_AD_RE =
+  /(join\s+(my|our|this)\s+group|group\s+link|new\s+group\s+link|chat\.whatsapp\.com|wa\.me\/|invite\s+link|dm\s+me\s+for\s+(the\s+)?link)/i;
 
 export function isFlooding(jid: string): boolean {
   const now = Date.now();
@@ -38,8 +41,16 @@ export function containsLink(text: string): boolean {
   return LINK_RE.test(text);
 }
 
+export function containsGroupAd(text: string): boolean {
+  return GROUP_AD_RE.test(text);
+}
+
 export function containsBadWord(text: string): boolean {
   return isBannedWord(text);
+}
+
+export function checkRuleViolation(text: string) {
+  return findViolatedRule(text);
 }
 
 export function isCapsSpam(text: string): boolean {
