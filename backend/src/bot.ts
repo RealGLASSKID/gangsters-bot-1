@@ -171,8 +171,8 @@ export async function startBot() {
               deleteCachedMessage,
               logDeletedMessage,
             } = await import("./database");
-            const { config } = await import("./config");
-            if (u.key.remoteJid !== config.groupJid) continue;
+            const { config: botConfig } = await import("./config");
+            if (u.key.remoteJid !== botConfig.groupJid) continue;
             const cached = getCachedMessage(u.key.id, u.key.remoteJid);
             if (!cached?.body) continue;
             logDeletedMessage({
@@ -182,13 +182,6 @@ export async function startBot() {
               senderName: cached.sender_name || "Unknown",
               body: cached.body,
             });
-            deleteCachedMessage(u.key.id, u.key.remoteJid);
-          }
-        } catch {
-          /* ignore */
-        }
-      }
-    });
             deleteCachedMessage(u.key.id, u.key.remoteJid);
           }
         } catch {
