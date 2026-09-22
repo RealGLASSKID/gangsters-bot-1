@@ -12,6 +12,10 @@ import {
   muteUser,
   getCustomCommand,
   getSetting,
+  cacheGroupMessage,
+  getCachedMessage,
+  deleteCachedMessage,
+  logDeletedMessage,
 } from "../database";
 import { CommandContext, GroupActions, GroupInfo, QuotedMessage, ReplyPayload } from "../types";
 import { logger } from "../utils/logger";
@@ -266,6 +270,58 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
     const botJid = sock.user?.id || (sock.user as { lid?: string } | undefined)?.lid || null;
 
     const body = getBody(msg);
+
+    // Anti-delete: silently log revoked messages (admin views with !show)
+    const protocol = msg.message?.protocolMessage;
+    if (protocol && (Number(protocol.type) === 0 || String(protocol.type).includes("REVOKE"))) {
+      if (isConfiguredGroup) {
+        const revokedId = protocol.key?.id;
+        if (revokedId) {
+          const cached = getCachedMessage(revokedId, remoteJid);
+          if (cached?.body) {
+            try {
+              logDeletedMessage({
+                msgId: revokedId,
+                remoteJid,
+                senderJid: cached.sender_jid || "",
+                senderName: cached.sender_name || "Unknown",
+                body: cached.body,
+              });
+            } catch {
+              /* ignore */
+            }
+            deleteCachedMessage(revokedId, remoteJid);
+          }
+        }
+      }
+      return;
+    }
+
+    // Store recent group messages for anti-delete (text + captions)
+    if (isConfiguredGroup && msg.key.id) {
+      let storeBody = body.trim();
+      if (!storeBody) {
+        if (msg.message?.imageMessage) storeBody = "[image]";
+        else if (msg.message?.videoMessage) storeBody = "[video]";
+        else if (msg.message?.stickerMessage) storeBody = "[sticker]";
+        else if (msg.message?.audioMessage) storeBody = "[audio]";
+        else if (msg.message?.documentMessage) storeBody = "[document]";
+      }
+      if (storeBody) {
+        try {
+          cacheGroupMessage({
+            id: msg.key.id,
+            remoteJid,
+            senderJid: from,
+            senderName,
+            body: storeBody,
+          });
+        } catch {
+          /* ignore cache errors */
+        }
+      }
+    }
+
     const prefixed = body.startsWith(config.prefix);
     const text = prefixed ? body.slice(config.prefix.length).trim() : "";
     const [cmdName, ...args] = text ? text.split(/\s+/) : [""];

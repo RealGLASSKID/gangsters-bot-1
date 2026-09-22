@@ -2,21 +2,21 @@ import { Command } from "../types";
 
 const hi: Command = {
   name: "hi",
-  description: "Greet the bot",
+  description: "Greet Sandra (Gangster Bot)",
   aliases: ["hello", "hey", "yo"],
   category: "general",
   cooldown: 3,
   async execute(ctx, reply) {
-    const name = ctx.senderName || "gangster";
-    const mention = ctx.from;
+    const name = ctx.senderName || "fam";
     await reply({
       text:
-        `🔥 *GANGSTER BOT* 🔥\n` +
-        `Yo wassup! 👋\n` +
-        `Welcome to the gang, @${name}! 😎\n` +
-        `I'm online and ready to work for you.\n` +
-        `Type *!help* for commands.`,
-      mentions: [mention],
+        `🔥 𝐆𝐀𝐍𝐆𝐒𝐓𝐄𝐑 𝐁𝐎𝐓 🔥\n\n` +
+        `Hey *${name}* 👋\n\n` +
+        `I'm *Sandra* — AKA *Gangster Bot* 😎🤖\n` +
+        `Online, locked in, and ready to run things for the gang.\n\n` +
+        `💡 Type *!help* to see how I can help you.\n` +
+        `🎮 Games, ranks, fun & more — just ask.`,
+      mentions: [ctx.from],
     });
   },
 };

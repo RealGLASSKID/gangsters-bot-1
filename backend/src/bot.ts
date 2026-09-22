@@ -159,6 +159,43 @@ export async function startBot() {
         await handleMessage(msg, sock);
       }
     });
+
+    // Extra revoke path — silent log only (admin: !show)
+    sock.ev.on("messages.update", async (updates) => {
+      if (!sock) return;
+      for (const u of updates) {
+        try {
+          if (u.update.message === null && u.key?.id && u.key.remoteJid) {
+            const {
+              getCachedMessage,
+              deleteCachedMessage,
+              logDeletedMessage,
+            } = await import("./database");
+            const { config } = await import("./config");
+            if (u.key.remoteJid !== config.groupJid) continue;
+            const cached = getCachedMessage(u.key.id, u.key.remoteJid);
+            if (!cached?.body) continue;
+            logDeletedMessage({
+              msgId: u.key.id,
+              remoteJid: u.key.remoteJid,
+              senderJid: cached.sender_jid || "",
+              senderName: cached.sender_name || "Unknown",
+              body: cached.body,
+            });
+            deleteCachedMessage(u.key.id, u.key.remoteJid);
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    });
+            deleteCachedMessage(u.key.id, u.key.remoteJid);
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    });
   } catch (err) {
     connecting = false;
     logger.error(err, "startBot failed");

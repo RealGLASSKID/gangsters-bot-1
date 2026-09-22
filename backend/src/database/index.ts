@@ -157,6 +157,26 @@ export function initDatabase() {
       created_at TEXT DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS message_cache (
+      id TEXT NOT NULL,
+      remote_jid TEXT NOT NULL,
+      sender_jid TEXT,
+      sender_name TEXT,
+      body TEXT,
+      created_at INTEGER NOT NULL,
+      PRIMARY KEY (id, remote_jid)
+    );
+
+    CREATE TABLE IF NOT EXISTS deleted_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      msg_id TEXT NOT NULL,
+      remote_jid TEXT NOT NULL,
+      sender_jid TEXT,
+      sender_name TEXT,
+      body TEXT,
+      deleted_at INTEGER NOT NULL
+    );
+
   `);
 
   migrateUsers();
@@ -844,4 +864,103 @@ export function findViolatedRule(text: string): { id: number; title: string; bod
     }
   }
   return null;
+}
+
+
+// —— Anti-delete message cache (recent group messages) ——
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const CACHE_MAX = 800;
+
+export function cacheGroupMessage(data: {
+  id: string;
+  remoteJid: string;
+  senderJid: string;
+  senderName: string;
+  body: string;
+}) {
+  if (!data.id || !data.remoteJid || !data.body?.trim()) return;
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO message_cache (id, remote_jid, sender_jid, sender_name, body, created_at)
+     VALUES (?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id, remote_jid) DO UPDATE SET
+       body = excluded.body,
+       sender_name = excluded.sender_name,
+       created_at = excluded.created_at`
+  ).run(data.id, data.remoteJid, data.senderJid, data.senderName, data.body.slice(0, 4000), now);
+
+  // prune old / excess
+  db.prepare("DELETE FROM message_cache WHERE created_at < ?").run(now - CACHE_TTL_MS);
+  const count = (db.prepare("SELECT COUNT(*) AS c FROM message_cache").get() as { c: number }).c;
+  if (count > CACHE_MAX) {
+    db.prepare(
+      `DELETE FROM message_cache WHERE rowid IN (
+         SELECT rowid FROM message_cache ORDER BY created_at ASC LIMIT ?
+       )`
+    ).run(count - CACHE_MAX);
+  }
+}
+
+export function getCachedMessage(
+  id: string,
+  remoteJid: string
+): { sender_jid: string; sender_name: string; body: string; created_at: number } | undefined {
+  return db
+    .prepare(
+      "SELECT sender_jid, sender_name, body, created_at FROM message_cache WHERE id = ? AND remote_jid = ?"
+    )
+    .get(id, remoteJid) as
+    | { sender_jid: string; sender_name: string; body: string; created_at: number }
+    | undefined;
+}
+
+export function deleteCachedMessage(id: string, remoteJid: string) {
+  db.prepare("DELETE FROM message_cache WHERE id = ? AND remote_jid = ?").run(id, remoteJid);
+}
+
+
+export function logDeletedMessage(data: {
+  msgId: string;
+  remoteJid: string;
+  senderJid: string;
+  senderName: string;
+  body: string;
+}) {
+  if (!data.msgId || !data.body?.trim()) return;
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO deleted_messages (msg_id, remote_jid, sender_jid, sender_name, body, deleted_at)
+     VALUES (?, ?, ?, ?, ?, ?)`
+  ).run(
+    data.msgId,
+    data.remoteJid,
+    data.senderJid || "",
+    data.senderName || "Unknown",
+    data.body.slice(0, 4000),
+    now
+  );
+  // keep last 100 deletions only
+  db.prepare(
+    `DELETE FROM deleted_messages WHERE id NOT IN (
+       SELECT id FROM deleted_messages ORDER BY deleted_at DESC LIMIT 100
+     )`
+  ).run();
+}
+
+export function getRecentDeleted(limit = 10): Array<{
+  id: number;
+  msg_id: string;
+  sender_jid: string;
+  sender_name: string;
+  body: string;
+  deleted_at: number;
+}> {
+  return db
+    .prepare(
+      `SELECT id, msg_id, sender_jid, sender_name, body, deleted_at
+       FROM deleted_messages
+       ORDER BY deleted_at DESC
+       LIMIT ?`
+    )
+    .all(Math.min(30, Math.max(1, limit))) as any[];
 }
