@@ -1,5 +1,4 @@
 import type { BotUser, GameSession } from "../../types";
-
 export interface GameTurnResult {
   reply: string;
   finished?: boolean;

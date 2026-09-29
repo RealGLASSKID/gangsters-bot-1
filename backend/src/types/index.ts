@@ -94,3 +94,28 @@ export interface SessionState {
   lastError: string | null;
   updatedAt: number;
 }
+
+/** Dashboard / relay user row (bot/users.ts) */
+export type Role = "member" | "admin" | "super_admin";
+
+export interface BotUser {
+  phone: string;
+  role: Role;
+  displayName: string | null;
+  createdAt: number;
+  lastSeenAt: number;
+  banned: number;
+}
+
+/** Active mini-game session (bot/sessions.ts) — not WhatsApp connection state */
+export type GameSessionStatus = "active" | "completed" | "abandoned";
+
+export interface GameSession {
+  id: string;
+  gameId: string;
+  phone: string;
+  status: GameSessionStatus;
+  state: Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
+}
