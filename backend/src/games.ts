@@ -47,7 +47,15 @@ export const EIGHT_BALL = [
 
 export type GameSession =
   | { type: "guess"; number: number; tries: number; host: string }
-  | { type: "trivia"; answer: string; host: string };
+  | { type: "trivia"; answer: string; host: string }
+  | { type: "emoji"; answers: string[]; host: string; tries: number }
+  | {
+      type: "stickerbattle";
+      players: string[];
+      playerNames: string[];
+      host: string;
+      round: number;
+    };
 
 let session: GameSession | null = null;
 

@@ -67,6 +67,10 @@ import putafinger from "./putafinger";
 import naijaquiz from "./naijaquiz";
 import riddle from "./riddle";
 import scramble from "./scramble";
+import emoji from "./emoji";
+import rankladder from "./rankladder";
+import stickerbattle from "./stickerbattle";
+import stickers from "./stickers";
 import slang from "./slang";
 import proverb from "./proverb";
 
@@ -111,7 +115,7 @@ function register(cmd: Command) {
 
   // New games
   games, truth, dare, tod, wyr, nhie, sop, mostlikely, putafinger,
-  naijaquiz, riddle, scramble, slang, proverb,
+  naijaquiz, riddle, scramble, emoji, slang, proverb, rankladder, stickerbattle, stickers,
 
   // Admin / utility
   addcmd, delcmd, listcmd, quickpoll, sopsubmit, release,

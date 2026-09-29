@@ -19,6 +19,7 @@ import {
 } from "../database";
 import { CommandContext, GroupActions, GroupInfo, QuotedMessage, ReplyPayload } from "../types";
 import { logger } from "../utils/logger";
+import { publicName } from "../utils/target";
 import { fullRank } from "../ranking";
 import {
   isFlooding,
@@ -29,6 +30,7 @@ import {
   isRepeatedMessage,
   isCapsSpam,
   tooManyMentions,
+  mentionsGroupJid,
 } from "../moderation";
 import { matchesAny, participantMatches, senderFromKey, splitPair } from "../utils/ids";
 import { handleSopMediaSubmission } from "../commands/sopsubmit";
@@ -407,10 +409,10 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
 
         if (floodOn && isFlooding(from)) {
           const count = addWarning(from, "message flood", "auto");
-          await sendText(`⚠️ Flood detected. Warning ${count}/3 for ${senderName}`);
+          await sendText({ text: `⚠️ Flood detected. Warning ${count}/3 for *${publicName(senderName, from)}*`, mentions: [from] });
           if (count >= 3) {
             muteUser(from, "3 warnings (flood)", "auto", 3600);
-            await sendText(`${senderName} muted for 1h (flood).`);
+            await sendText({ text: `🔇 *${publicName(senderName, from)}* muted for 1h (flood).`, mentions: [from] });
           }
           return;
         }
@@ -421,7 +423,29 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
           await sendText(`🔁 Stop repeating the same message. Warning ${count}/3`);
           if (count >= 3) {
             muteUser(from, "3 warnings (spam)", "auto", 3600);
-            await sendText(`${senderName} muted for 1h (spam).`);
+            await sendText({ text: `🔇 *${publicName(senderName, from)}* muted for 1h (spam).`, mentions: [from] });
+          }
+          return;
+        }
+
+        // Tagging the group itself (e.g. for status) — delete + warn by name
+        if (mentionsOn && mentionsGroupJid(mentioned, config.groupJid)) {
+          const count = addWarning(from, "group mention / tag", "auto");
+          await tryDelete(sock, msg, remoteJid);
+          const label = publicName(senderName, from);
+          await sendText({
+            text:
+              `🚫 *No tagging the group!*\n` +
+              `⚠️ Warning ${count}/3 for @${label.split(" ")[0]}\n` +
+              `_Rule: do not mention/tag this group (including for status)._`,
+            mentions: [from],
+          });
+          if (count >= 3) {
+            muteUser(from, "3 warnings (group mention)", "auto", 3600);
+            await sendText({
+              text: `🔇 @${label.split(" ")[0]} muted for 1h (group tagging).`,
+              mentions: [from],
+            });
           }
           return;
         }
@@ -429,7 +453,11 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
         if (mentionsOn && tooManyMentions(mentioned)) {
           const count = addWarning(from, "excessive mentions", "auto");
           await tryDelete(sock, msg, remoteJid);
-          await sendText(`📣 Too many mentions. Warning ${count}/3`);
+          const label = publicName(senderName, from);
+          await sendText({
+            text: `📣 Too many mentions. Warning ${count}/3 for *${label}*`,
+            mentions: [from],
+          });
           return;
         }
 

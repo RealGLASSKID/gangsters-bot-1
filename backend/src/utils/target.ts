@@ -53,5 +53,23 @@ export async function resolveTargetJid(
 
 export function displayId(jid: string): string {
   const n = normalizeJid(jid) || jid;
-  return n.split("@")[0] || jid;
+  const user = (n.split("@")[0] || "").split(":")[0] || "";
+  if (/^\d{10,15}$/.test(user)) return `+${user}`;
+  if (user.length > 16) return user.slice(0, 12) + "…";
+  return user || "member";
+}
+
+/** Prefer push/DB name; never show raw JID in public messages */
+export function publicName(name: string | null | undefined, jid: string): string {
+  const n = (name || "").trim();
+  if (
+    n &&
+    n.toLowerCase() !== "unknown" &&
+    !n.includes("@s.whatsapp") &&
+    !n.includes("@lid") &&
+    !n.includes("@g.us")
+  ) {
+    return n;
+  }
+  return displayId(jid);
 }

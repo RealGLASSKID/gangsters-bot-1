@@ -1,6 +1,6 @@
 import { Command } from "../types";
 import { addWarning, findUser } from "../database";
-import { resolveTargetJid, displayId } from "../utils/target";
+import { resolveTargetJid, displayId, publicName } from "../utils/target";
 import { matchesAny } from "../utils/ids";
 
 const warn: Command = {
@@ -32,7 +32,7 @@ const warn: Command = {
 
     const count = addWarning(target, reason, ctx.from);
     const user = findUser(target);
-    const name = user?.name || displayId(target);
+    const name = publicName(user?.name, target);
     const mention = ctx.mentionedJids[0] || target;
     await reply({
       text: `⚠️ Warned *${name}*\nReason: ${reason}\nTotal: ${count}/3`,

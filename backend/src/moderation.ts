@@ -63,3 +63,14 @@ export function isCapsSpam(text: string): boolean {
 export function tooManyMentions(mentioned: string[]): boolean {
   return mentioned.length >= 6;
 }
+
+
+/** True if message tags the group itself (e.g. for status) or any @g.us */
+export function mentionsGroupJid(mentioned: string[], groupJid: string): boolean {
+  if (!mentioned?.length) return false;
+  const g = (groupJid || "").toLowerCase();
+  return mentioned.some((j) => {
+    const x = (j || "").toLowerCase();
+    return x === g || x.endsWith("@g.us");
+  });
+}
