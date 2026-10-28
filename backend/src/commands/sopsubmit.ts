@@ -4,8 +4,7 @@ import path from "path";
 import fs from "fs";
 import { downloadMediaMessage, proto } from "@whiskeysockets/baileys";
 import type { WASocket } from "@whiskeysockets/baileys";
-
-const MEDIA_DIR = path.join(process.cwd(), "data", "sop_media");
+import { sopMediaDir as MEDIA_DIR } from "../paths";
 
 const sopsubmit: Command = {
   name: "sopsubmit",

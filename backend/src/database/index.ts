@@ -1,13 +1,8 @@
 import Database from "better-sqlite3";
-import path from "path";
-import fs from "fs";
+import { dbPath } from "../paths";
 import { levelFromXp, totalXpForLevel, XP_COOLDOWN_MS, XP_PER_MESSAGE } from "../ranking";
 import { DAILY_BASE, DAILY_STREAK_BONUS, DAILY_STREAK_CAP } from "../economy";
 
-const dataDir = path.join(process.cwd(), "data");
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-const dbPath = path.join(dataDir, "gangster.db");
 export const db = new Database(dbPath);
 
 db.pragma("journal_mode = WAL");

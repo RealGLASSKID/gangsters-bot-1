@@ -21,3 +21,8 @@ main().catch((err) => {
   logger.error(err, "fatal");
   process.exit(1);
 });
+
+process.on("SIGTERM", () => {
+  logger.info("SIGTERM received, shutting down");
+  process.exit(0);
+});

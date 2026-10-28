@@ -68,9 +68,9 @@ export function startApi(port = Number(process.env.PORT) || 4000) {
     next();
   });
 
-  app.get("/api/health", (_req, res) => {
+  const health = (_req: Request, res: Response) => {
     const session = getSession();
-    res.json({
+    res.status(200).json({
       ok: true,
       bot: config.botName,
       connected: session.connected,
@@ -78,7 +78,11 @@ export function startApi(port = Number(process.env.PORT) || 4000) {
       groupJid: config.groupJid,
       firebase: firebaseReady() || dashboardConfig.devBypass,
     });
-  });
+  };
+
+  // UptimeRobot / Render health checks — always 200 if the process is up
+  app.get("/health", health);
+  app.get("/api/health", health);
 
   app.get("/api/stats", requireDashboardAuth, (_req, res) => {
     const users = db.prepare("SELECT COUNT(*) AS c FROM users").get() as { c: number };
@@ -265,8 +269,9 @@ export function startApi(port = Number(process.env.PORT) || 4000) {
     }
   });
 
-  app.listen(port, () => {
-    console.log(`[API] http://localhost:${port}`);
+  const host = process.env.HOST || "0.0.0.0";
+  app.listen(port, host, () => {
+    console.log(`[API] http://${host}:${port}`);
     if (dashboardConfig.devBypass) {
       console.warn("[API] DASHBOARD_DEV_BYPASS=1 — dashboard auth is off");
     } else if (!firebaseReady()) {

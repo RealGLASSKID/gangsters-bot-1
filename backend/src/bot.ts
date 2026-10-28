@@ -5,7 +5,6 @@ import makeWASocket, {
 } from "@whiskeysockets/baileys";
 import qrcodeTerminal from "qrcode-terminal";
 import QRCode from "qrcode";
-import path from "path";
 import fs from "fs";
 import { Boom } from "@hapi/boom";
 import { handleMessage } from "./handlers/message";
@@ -14,8 +13,7 @@ import { logger } from "./utils/logger";
 import { config } from "./config";
 import { startScheduler } from "./scheduler";
 import { SessionState, SessionStatus } from "./types";
-
-const AUTH_DIR = path.join(process.cwd(), "data", "auth");
+import { authDir as AUTH_DIR } from "./paths";
 
 let sock: ReturnType<typeof makeWASocket> | null = null;
 let connecting = false;
