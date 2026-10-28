@@ -1,11 +1,9 @@
 import makeWASocket, {
   DisconnectReason,
-  useMultiFileAuthState,
   fetchLatestBaileysVersion,
 } from "@whiskeysockets/baileys";
 import qrcodeTerminal from "qrcode-terminal";
 import QRCode from "qrcode";
-import fs from "fs";
 import { Boom } from "@hapi/boom";
 import { handleMessage } from "./handlers/message";
 import { registerParticipantHandler } from "./handlers/participants";
@@ -13,7 +11,9 @@ import { logger } from "./utils/logger";
 import { config } from "./config";
 import { startScheduler } from "./scheduler";
 import { SessionState, SessionStatus } from "./types";
-import { authDir as AUTH_DIR } from "./paths";
+import { loadBaileysAuth, type BaileysAuth } from "./auth/baileysAuth";
+
+let auth: BaileysAuth | null = null;
 
 let sock: ReturnType<typeof makeWASocket> | null = null;
 let connecting = false;
@@ -51,13 +51,13 @@ async function renderQr(qr: string) {
   }
 }
 
-function wipeAuthDir() {
+async function wipeAuth() {
   try {
-    fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+    await (auth ?? (await loadBaileysAuth())).clear();
   } catch (err) {
     logger.error(err, "wipe auth");
   }
-  fs.mkdirSync(AUTH_DIR, { recursive: true });
+  auth = null;
 }
 
 export async function startBot() {
@@ -66,8 +66,8 @@ export async function startBot() {
   setSession({ status: "connecting", connected: false, lastError: null });
 
   try {
-    fs.mkdirSync(AUTH_DIR, { recursive: true });
-    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    auth = await loadBaileysAuth();
+    const { state, saveCreds } = auth;
     const { version } = await fetchLatestBaileysVersion();
 
     sock = makeWASocket({
@@ -81,7 +81,7 @@ export async function startBot() {
 
     sock.ev.on("creds.update", saveCreds);
 
-    sock.ev.on("connection.update", ({ connection, lastDisconnect, qr }) => {
+    sock.ev.on("connection.update", async ({ connection, lastDisconnect, qr }) => {
       if (qr) {
         console.log("\nScan QR with the bot WhatsApp account:\n");
         qrcodeTerminal.generate(qr, { small: true });
@@ -98,7 +98,7 @@ export async function startBot() {
 
         if (relinkRequested) {
           relinkRequested = false;
-          wipeAuthDir();
+          await wipeAuth();
           setSession({
             status: "connecting",
             connected: false,
@@ -225,7 +225,7 @@ export async function relinkWhatsApp(): Promise<SessionState> {
     }
   } else {
     relinkRequested = false;
-    wipeAuthDir();
+    await wipeAuth();
     connecting = false;
     await startBot();
   }

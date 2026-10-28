@@ -47,4 +47,5 @@ Paste those into `OWNER_JID` and `GROUP_JID` (or `src/config.ts`).
 3. Environment (same keys as `.env.example`). Render injects `PORT` — do not hardcode it. Keep `DASHBOARD_DEV_BYPASS=0` in production. `tsx` is a production dependency so `npm start` works after a production install.
 4. Deploy, open the service URL, then scan the WhatsApp QR from Render logs or the dashboard session page.
 5. **UptimeRobot:** add an HTTPS monitor on `https://YOUR-SERVICE.onrender.com/health`, interval **5 minutes**, keyword `ok` (optional). That ping stops the free instance from sleeping.
-6. SQLite and Baileys auth live in `DATA_DIR` (default `./data`). Free disks are ephemeral — a restart/deploy can drop the WhatsApp session. For a persistent login, attach a Render disk and set `DATA_DIR` to the mount path (for example `/var/data`).
+6. Set **`REDIS_URL`** (Render Key Value / Redis). Baileys auth (QR session + signal keys) is stored there so a restart does not force a new scan. Without it, auth falls back to `DATA_DIR/auth` and is lost on a free-instance restart. Existing `data/auth/*.json` files are copied into Redis once if Redis has no creds yet.
+7. SQLite still lives in `DATA_DIR` (default `./data`). Attach a disk if you need the economy DB to survive deploys.

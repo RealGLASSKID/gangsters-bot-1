@@ -3,10 +3,15 @@
 # with Root Directory = backend.
 #
 # Free instances sleep after ~15 minutes idle. Point UptimeRobot at /health every 5 minutes.
-# WhatsApp auth + SQLite live under DATA_DIR. Attach a disk (paid) if you cannot re-scan QR
-# after every deploy/restart.
+# WhatsApp auth lives in Redis (REDIS_URL). SQLite still uses DATA_DIR.
 
 services:
+  - type: keyvalue
+    name: gangster-redis
+    plan: free
+    ipAllowList: []
+    maxmemoryPolicy: noeviction
+
   - type: web
     name: gangster-bot-backend
     runtime: node
@@ -24,6 +29,13 @@ services:
         value: info
       - key: DASHBOARD_DEV_BYPASS
         value: "0"
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: gangster-redis
+          property: connectionString
+      - key: REDIS_AUTH_PREFIX
+        value: gangster:wa-auth
       - key: OWNER_JID
         sync: false
       - key: GROUP_JID

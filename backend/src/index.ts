@@ -4,6 +4,7 @@ import { startBot } from "./bot";
 import { startApi } from "./api";
 import { logger } from "./utils/logger";
 import { config } from "./config";
+import { closeRedis } from "./redis";
 
 async function main() {
   console.log(`\n${config.botName}\n`);
@@ -24,5 +25,5 @@ main().catch((err) => {
 
 process.on("SIGTERM", () => {
   logger.info("SIGTERM received, shutting down");
-  process.exit(0);
+  void closeRedis().finally(() => process.exit(0));
 });
