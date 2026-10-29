@@ -463,29 +463,82 @@ export function clearWarnings(jid: string) {
   db.prepare("DELETE FROM warnings WHERE jid = ?").run(jid);
 }
 
+/** Expand JID so mute/unmute match phone and @lid forms */
+function muteJidVariants(jid: string): string[] {
+  const raw = (jid || "").trim();
+  if (!raw) return [];
+  const bare = raw.split("@")[0].split(":")[0] || "";
+  const out = new Set<string>([raw]);
+  if (bare) {
+    out.add(bare);
+    out.add(`${bare}@s.whatsapp.net`);
+    out.add(`${bare}@lid`);
+    out.add(`${bare}@c.us`);
+  }
+  return [...out];
+}
+
 export function muteUser(jid: string, reason: string, byJid: string, durationSec: number | null) {
   ensureUser(jid);
   const expires = durationSec ? Date.now() + durationSec * 1000 : null;
-  db.prepare(`
+  const stmt = db.prepare(`
     INSERT INTO mutes (jid, reason, by_jid, expires_at) VALUES (?, ?, ?, ?)
     ON CONFLICT(jid) DO UPDATE SET reason = excluded.reason, by_jid = excluded.by_jid, expires_at = excluded.expires_at
-  `).run(jid, reason, byJid, expires);
+  `);
+  for (const j of muteJidVariants(jid)) {
+    stmt.run(j, reason, byJid, expires);
+  }
 }
 
 export function unmuteUser(jid: string) {
-  db.prepare("DELETE FROM mutes WHERE jid = ?").run(jid);
+  const del = db.prepare("DELETE FROM mutes WHERE jid = ?");
+  for (const j of muteJidVariants(jid)) del.run(j);
+  const bare = (jid || "").split("@")[0].split(":")[0] || "";
+  if (bare.length >= 8) {
+    db.prepare("DELETE FROM mutes WHERE jid LIKE ? OR jid = ?").run(`${bare}@%`, bare);
+  }
 }
 
-export function isMuted(jid: string): boolean {
-  const row = db.prepare("SELECT expires_at FROM mutes WHERE jid = ?").get(jid) as
-    | { expires_at: number | null }
-    | undefined;
-  if (!row) return false;
-  if (row.expires_at && row.expires_at <= Date.now()) {
-    db.prepare("DELETE FROM mutes WHERE jid = ?").run(jid);
-    return false;
+export function isMuted(...jids: Array<string | null | undefined>): boolean {
+  const variants = new Set<string>();
+  for (const j of jids) {
+    if (!j) continue;
+    for (const v of muteJidVariants(j)) variants.add(v);
   }
-  return true;
+  if (!variants.size) return false;
+  const get = db.prepare("SELECT jid, expires_at FROM mutes WHERE jid = ?");
+  const del = db.prepare("DELETE FROM mutes WHERE jid = ?");
+  const now = Date.now();
+  for (const j of variants) {
+    const row = get.get(j) as { jid: string; expires_at: number | null } | undefined;
+    if (!row) continue;
+    if (row.expires_at && row.expires_at <= now) {
+      del.run(row.jid);
+      continue;
+    }
+    return true;
+  }
+  for (const j of jids) {
+    if (!j) continue;
+    const bare = j.split("@")[0].split(":")[0] || "";
+    if (bare.length < 8) continue;
+    const row = db
+      .prepare("SELECT jid, expires_at FROM mutes WHERE jid = ? OR jid LIKE ? LIMIT 1")
+      .get(bare, `${bare}@%`) as { jid: string; expires_at: number | null } | undefined;
+    if (!row) continue;
+    if (row.expires_at && row.expires_at <= now) {
+      del.run(row.jid);
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
+export function listMutes(): Array<{ jid: string; reason: string; expires_at: number | null }> {
+  return db
+    .prepare("SELECT jid, reason, expires_at FROM mutes ORDER BY rowid DESC LIMIT 50")
+    .all() as Array<{ jid: string; reason: string; expires_at: number | null }>;
 }
 
 export function resetUser(jid: string) {

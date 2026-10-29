@@ -18,6 +18,7 @@ let auth: BaileysAuth | null = null;
 let sock: ReturnType<typeof makeWASocket> | null = null;
 let connecting = false;
 let schedulerStarted = false;
+let sandraBackAnnounced = false;
 let relinkRequested = false;
 
 const session: SessionState = {
@@ -146,10 +147,71 @@ export async function startBot() {
           schedulerStarted = true;
           startScheduler();
         }
+
+        // Auto-approve pending join requests (bot must be admin)
+        void (async () => {
+          try {
+            const list =
+              (await (sock as any).groupRequestParticipantsList?.(config.groupJid)) || [];
+            const ids = list
+              .map((p: { id?: string; jid?: string }) => p.id || p.jid)
+              .filter(Boolean);
+            if (ids.length) {
+              await (sock as any).groupRequestParticipantsUpdate(
+                config.groupJid,
+                ids,
+                "approve"
+              );
+              logger.info(`Auto-approved ${ids.length} join request(s)`);
+            }
+          } catch (err) {
+            logger.warn({ err }, "auto-approve join requests skipped");
+          }
+        })();
+
+        // One-time "Sandra is back" message per process
+        if (!sandraBackAnnounced && config.groupJid) {
+          sandraBackAnnounced = true;
+          void (async () => {
+            try {
+              await new Promise((r) => setTimeout(r, 2500));
+              await sock!.sendMessage(config.groupJid, {
+                text:
+                  `🔥 *Hey guys, it's me — Sandra* 👋\n\n` +
+                  `I went quiet for a while… now I'm *back* 😎\n\n` +
+                  `Who missed me? 🤭\n\n` +
+                  `You can start earning *XP*, climb the *ranks*, play games, and keep the vibes alive.\n\n` +
+                  `Type *!help* or *!games* to see what I can do.\n\n` +
+                  `— *GANGSTER BOT / Sandra* 🔥`,
+              });
+              logger.info("Posted Sandra-is-back message to group");
+            } catch (err) {
+              logger.warn({ err }, "back message failed");
+            }
+          })();
+        }
       }
     });
 
     registerParticipantHandler(sock);
+
+    // Approve join requests as they come in (bot must be group admin)
+    sock.ev.on("group-join-request" as any, async (event: any) => {
+      try {
+        const gid = event?.id || event?.groupJid || config.groupJid;
+        if (gid !== config.groupJid) return;
+        const participants =
+          event?.participants ||
+          (event?.participant ? [event.participant] : []);
+        const ids = (participants as string[]).filter(Boolean);
+        if (!ids.length) return;
+        await (sock as any).groupRequestParticipantsUpdate(gid, ids, "approve");
+        logger.info(`Approved join request(s): ${ids.join(", ")}`);
+      } catch (err) {
+        logger.warn({ err }, "group-join-request approve failed");
+      }
+    });
+
 
     sock.ev.on("messages.upsert", async ({ messages, type }) => {
       if (type !== "notify" || !sock) return;

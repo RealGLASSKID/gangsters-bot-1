@@ -44,6 +44,8 @@ const DM_ALLOWED = new Set([
   "welcome", "setwelcome", "goodbye", "setgoodbye",
   "banword", "moderation", "mod", "automod",
   "help", "games",
+  "announcement", "announce", "ann", "broadcast",
+  "gossip", "gist", "rumour", "rumor", "tea",
 ]);
 
 const FREE_ANYWHERE = new Set(["me", "whoami", "jid", "group", "gid", "groupid"]);
@@ -345,7 +347,7 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
       }
     }
 
-    if (isConfiguredGroup && !isOwner && (isMuted(from) || isMuted(sender.raw))) return;
+    if (isConfiguredGroup && !isOwner && isMuted(from, sender.raw, sender.pn, sender.lid, sender.primary)) return;
 
     const sendText = async (payload: ReplyPayload) => {
       // Show "typing..." indicator like a real WhatsApp user
@@ -409,10 +411,10 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
 
         if (floodOn && isFlooding(from)) {
           const count = addWarning(from, "message flood", "auto");
-          await sendText({ text: `⚠️ Flood detected. Warning ${count}/3 for *${publicName(senderName, from)}*`, mentions: [from] });
+          await sendText({ text: `⚠️ *${publicName(senderName, from)}* you dey rush message too much 🙄\n⚠ Warning ${count}/3`, mentions: [from] });
           if (count >= 3) {
             muteUser(from, "3 warnings (flood)", "auto", 3600);
-            await sendText({ text: `🔇 *${publicName(senderName, from)}* muted for 1h (flood).`, mentions: [from] });
+            await sendText({ text: `🔇 *${publicName(senderName, from)}* muted 1h — you dey flood the chat 😴`, mentions: [from] });
           }
           return;
         }
@@ -423,7 +425,7 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
           await sendText(`🔁 Stop repeating the same message. Warning ${count}/3`);
           if (count >= 3) {
             muteUser(from, "3 warnings (spam)", "auto", 3600);
-            await sendText({ text: `🔇 *${publicName(senderName, from)}* muted for 1h (spam).`, mentions: [from] });
+            await sendText({ text: `🔇 *${publicName(senderName, from)}* muted 1h — spam no dey allowed`, mentions: [from] });
           }
           return;
         }
@@ -443,7 +445,7 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
           if (count >= 3) {
             muteUser(from, "3 warnings (group mention)", "auto", 3600);
             await sendText({
-              text: `🔇 @${label.split(" ")[0]} muted for 1h (group tagging).`,
+              text: `🔇 @${label.split(" ")[0]} muted 1h — no dey tag the group for status`,
               mentions: [from],
             });
           }
@@ -478,7 +480,7 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
           });
           if (count >= 3) {
             muteUser(from, "3 warnings (links)", "auto", 3600);
-            await sendText({ text: `🔇 @${senderName} muted for 1h (links).`, mentions: [from] });
+            await sendText({ text: `🔇 @${senderName} muted 1h — no dey post links like that`, mentions: [from] });
           }
           return;
         }
@@ -489,12 +491,12 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
           await tryDelete(sock, msg, remoteJid);
           await sendText({
             text: `🚫 *No promoting other groups.*
-⚠️ Warning ${count}/3 for *${senderName}*`,
+⚠️ ⚠ Warning ${count}/3 for *${senderName}*`,
             mentions: [from],
           });
           if (count >= 3) {
             muteUser(from, "3 warnings (group ads)", "auto", 3600);
-            await sendText({ text: `🔇 *${senderName}* muted for 1h (group ads).`, mentions: [from] });
+            await sendText({ text: `🔇 *${senderName}* muted 1h — no dey advertise group here`, mentions: [from] });
           }
           return;
         }
@@ -518,7 +520,7 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
           if (count >= 3) {
             muteUser(from, `3 warnings (${violated.title})`, "auto", 3600);
             await sendText({
-              text: `🔇 *${senderName}* muted for 1h (too many warnings).`,
+              text: `🔇 *${senderName}* muted 1h — warnings don full 3/3`,
               mentions: [from],
             });
           }
@@ -529,14 +531,14 @@ export async function handleMessage(msg: proto.IWebMessageInfo, sock: WASocket) 
           const count = addWarning(from, "bad language", "auto");
           await tryDelete(sock, msg, remoteJid);
           await sendText({
-            text: `🚫 Watch the language.
-⚠️ Warning ${count}/3 for *${senderName}*`,
+            text: `🚫 You no dey hear word — watch the language 🙄
+⚠️ ⚠ Warning ${count}/3 for *${senderName}*`,
             mentions: [from],
           });
           if (count >= 3) {
             muteUser(from, "3 warnings (language)", "auto", 3600);
             await sendText({
-              text: `🔇 *${senderName}* muted for 1h (language).`,
+              text: `🔇 *${senderName}* muted 1h — mouth too hot 🔥`,
               mentions: [from],
             });
           }

@@ -102,7 +102,7 @@ const emoji: Command = {
         const ans = session.answers[0];
         clearSession();
         await reply(
-          `✅ *Correct!* *${ctx.senderName}*\n\n` +
+          `✅ *Correct answer!* *${ctx.senderName}*\n\n` +
             `Answer: *${ans}*\n` +
             `Tries: ${session.tries} · +${reward} GC 💰`
         );
@@ -125,7 +125,10 @@ const emoji: Command = {
       return;
     }
 
-    const puzzle = PUZZLES[Math.floor(Math.random() * PUZZLES.length)];
+    const expressions = PUZZLES.filter((p) => p.style === "expression");
+    const phrases = PUZZLES.filter((p) => p.style !== "expression");
+    const pool = Math.random() < 0.65 && expressions.length ? expressions : PUZZLES;
+    const puzzle = pool[Math.floor(Math.random() * pool.length)];
     setSession({
       type: "emoji",
       answers: puzzle.answers,

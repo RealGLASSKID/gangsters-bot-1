@@ -1,49 +1,64 @@
 import { Command } from "../types";
 import { getSession, setSession, clearSession } from "../games";
-import { publicName, displayId } from "../utils/target";
-import { resolveTargetJid } from "../utils/target";
+import { publicName } from "../utils/target";
 
 const stickerbattle: Command = {
   name: "stickerbattle",
   aliases: ["sbattle", "stickerwar", "stickerduel"],
   description: "Start a sticker battle between two members",
-  usage: "!stickerbattle @user1 @user2",
+  usage: "!stickerbattle @user1 @user2 | !stickerbattle end",
   category: "games",
-  cooldown: 8,
+  cooldown: 5,
   async execute(ctx, reply) {
     const session = getSession();
-    if (session?.type === "stickerbattle") {
+    const first = (ctx.args[0] || "").toLowerCase();
+
+    if (first === "end" || first === "stop" || first === "cancel") {
+      if (session) {
+        const t = session.type;
+        clearSession();
+        await reply(`✅ Cleared *${t}*. You can start a new sticker battle.`);
+      } else {
+        await reply("No game was running.");
+      }
+      return;
+    }
+
+    if (session) {
+      if (session.type === "stickerbattle") {
+        await reply(
+          `⚔️ Sticker battle already on!\n` +
+            `Players: *${session.playerNames.join(" vs ")}*\n\n` +
+            `Next: \`!stickers\`\n` +
+            `End: \`!stickers end\` or \`!endgame\``
+        );
+        return;
+      }
       await reply(
-        `⚔️ A sticker battle is already on!\n` +
-          `Players: *${session.playerNames.join(" vs ")}*\n` +
-          `Use \`!stickers\` for the next challenge · \`!stickers end\` to stop.`
+        `⏳ Another game is running: *${session.type}*\n\n` +
+          `End it first:\n` +
+          `• \`!endgame\`\n` +
+          `• \`!stickerbattle end\`\n` +
+          `• \`!stickers end\`\n\n` +
+          `Then: \`!stickerbattle @a @b\``
       );
       return;
     }
-    if (session) {
-      await reply("⏳ Another game is running. Finish it first.");
-      return;
-    }
 
-    let p1 = ctx.mentionedJids[0];
-    let p2 = ctx.mentionedJids[1];
-
+    const p1 = ctx.mentionedJids[0];
+    const p2 = ctx.mentionedJids[1];
     if (!p1 || !p2) {
       await reply(
         `🎨 *STICKER BATTLE*\n\n` +
-          `Tag *two* members to start:\n` +
-          `\`!stickerbattle @person1 @person2\`\n\n` +
-          `Then use \`!stickers\` to drop challenges.`
+          `Tag *two* members:\n\`!stickerbattle @person1 @person2\`\n\n` +
+          `Then \`!stickers\` for challenges.\n` +
+          `End: \`!stickers end\` · \`!endgame\``
       );
       return;
     }
 
-    // Prefer DB/display names
-    const n1 = publicName(null, p1);
-    const n2 = publicName(null, p2);
-    // Try push names from mentions context — limited; use displayId-style
-    const name1 = ctx.args[0]?.startsWith("@") ? n1 : n1;
-    const name2 = n2;
+    const name1 = publicName(null, p1);
+    const name2 = publicName(null, p2);
 
     setSession({
       type: "stickerbattle",
@@ -56,12 +71,10 @@ const stickerbattle: Command = {
     await reply({
       text:
         `🎨⚔️ *STICKER BATTLE*\n\n` +
-        `It's on!\n` +
-        `@${name1.split(" ")[0]}  vs  @${name2.split(" ")[0]}\n\n` +
-        `Who has the deepest sticker pack? 👀\n` +
+        `It's on!\n*${name1}*  vs  *${name2}*\n\n` +
         `Type \`!stickers\` for a challenge.\n` +
-        `Drop the matching sticker in chat — group decides the winner of each round.\n\n` +
-        `_End anytime: \`!stickers end\`_`,
+        `Drop matching stickers — group judges each round.\n\n` +
+        `_End: \`!stickers end\` · \`!endgame\`_`,
       mentions: [p1, p2],
     });
   },

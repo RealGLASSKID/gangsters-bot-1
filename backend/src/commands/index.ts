@@ -71,6 +71,10 @@ import emoji from "./emoji";
 import rankladder from "./rankladder";
 import stickerbattle from "./stickerbattle";
 import stickers from "./stickers";
+import announcement from "./announcement";
+import gossip from "./gossip";
+import approve from "./approve";
+import endgame from "./endgame";
 import slang from "./slang";
 import proverb from "./proverb";
 
@@ -115,12 +119,12 @@ function register(cmd: Command) {
 
   // New games
   games, truth, dare, tod, wyr, nhie, sop, mostlikely, putafinger,
-  naijaquiz, riddle, scramble, emoji, slang, proverb, rankladder, stickerbattle, stickers,
+  naijaquiz, riddle, scramble, emoji, slang, proverb, rankladder, stickerbattle, stickers, endgame,
 
   // Admin / utility
   addcmd, delcmd, listcmd, quickpoll, sopsubmit, release,
   welcome, setwelcome, goodbye, setgoodbye,
-  poll, banword, moderation, online, views, grouprules,
+  poll, banword, moderation, online, views, grouprules, announcement, approve, gossip,
 ].forEach(register);
 
 export function getCommand(name: string) {
